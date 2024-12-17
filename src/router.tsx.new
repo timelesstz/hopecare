@@ -1,0 +1,170 @@
+import React from 'react';
+import { createBrowserRouter, Navigate } from 'react-router-dom';
+import App from './App';
+import ErrorBoundary from './components/ErrorBoundary';
+import Home from './pages/Home';
+import About from './pages/About';
+import Donate from './pages/Donate';
+import Events from './pages/Events';
+import Blog from './pages/Blog';
+import BlogPost from './pages/BlogPost';
+import Volunteer from './pages/Volunteer';
+import Contact from './pages/Contact';
+import DonationSuccess from './pages/donation/DonationSuccess';
+import DonationCancel from './pages/donation/DonationCancel';
+import DonorDashboard from './pages/DonorDashboard';
+import DonorAuth from './pages/DonorAuth';
+import AdminDashboard from './pages/admin/Dashboard';
+import ContentEditor from './components/admin/ContentEditor';
+import MediaLibrary from './components/admin/MediaLibrary';
+import UserManagement from './components/admin/UserManagement';
+import Analytics from './components/admin/Analytics';
+import Education from './pages/programs/Education';
+import Health from './pages/programs/Health';
+import EconomicEmpowerment from './pages/programs/EconomicEmpowerment';
+import Projects from './pages/Projects';
+import NotFound from './pages/NotFound';
+import { useAuth } from './hooks/useAuth';
+
+const ProtectedRoute = ({ children, requiredRole }: { children: React.ReactNode; requiredRole?: string }) => {
+  const { isAuthenticated, user } = useAuth();
+  
+  if (!isAuthenticated) {
+    return <Navigate to="/login" />;
+  }
+
+  if (requiredRole && user?.role !== requiredRole) {
+    return <Navigate to="/admin" />;
+  }
+
+  return <>{children}</>;
+};
+
+export const router = createBrowserRouter([
+  {
+    path: '/',
+    element: <App />,
+    errorElement: <ErrorBoundary />,
+    children: [
+      {
+        index: true,
+        element: <Home />,
+      },
+      {
+        path: 'about/*',
+        element: <About />,
+      },
+      {
+        path: 'donate',
+        element: <Donate />,
+      },
+      {
+        path: 'events',
+        element: <Events />,
+      },
+      {
+        path: 'blog',
+        element: <Blog />,
+      },
+      {
+        path: 'blog/:id',
+        element: <BlogPost />,
+      },
+      {
+        path: 'volunteer',
+        element: <Volunteer />,
+      },
+      {
+        path: 'contact',
+        element: <Contact />,
+      },
+      {
+        path: 'donation',
+        children: [
+          {
+            path: 'success',
+            element: <DonationSuccess />,
+          },
+          {
+            path: 'cancel',
+            element: <DonationCancel />,
+          },
+        ],
+      },
+      {
+        path: 'donor/auth',
+        element: <DonorAuth />,
+      },
+      {
+        path: 'donor-dashboard',
+        element: (
+          <ProtectedRoute>
+            <DonorDashboard />
+          </ProtectedRoute>
+        ),
+      },
+      {
+        path: 'admin/*',
+        element: (
+          <ProtectedRoute requiredRole="ADMIN">
+            <AdminDashboard />
+          </ProtectedRoute>
+        ),
+        children: [
+          {
+            path: 'content',
+            element: (
+              <ProtectedRoute requiredRole="editor">
+                <ContentEditor />
+              </ProtectedRoute>
+            ),
+          },
+          {
+            path: 'media',
+            element: (
+              <ProtectedRoute requiredRole="editor">
+                <MediaLibrary />
+              </ProtectedRoute>
+            ),
+          },
+          {
+            path: 'users',
+            element: (
+              <ProtectedRoute requiredRole="admin">
+                <UserManagement />
+              </ProtectedRoute>
+            ),
+          },
+          {
+            path: 'analytics',
+            element: (
+              <ProtectedRoute requiredRole="admin">
+                <Analytics />
+              </ProtectedRoute>
+            ),
+          },
+        ],
+      },
+      {
+        path: 'programs/education',
+        element: <Education />,
+      },
+      {
+        path: 'programs/health',
+        element: <Health />,
+      },
+      {
+        path: 'programs/economic-empowerment',
+        element: <EconomicEmpowerment />,
+      },
+      {
+        path: 'projects',
+        element: <Projects />,
+      },
+      {
+        path: '*',
+        element: <NotFound />,
+      },
+    ],
+  },
+]);

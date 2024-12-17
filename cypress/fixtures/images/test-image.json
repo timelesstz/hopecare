@@ -1,0 +1,16 @@
+{
+  "name": "test-image.jpg",
+  "type": "image/jpeg",
+  "size": 52642,
+  "dimensions": {
+    "width": 800,
+    "height": 600
+  },
+  "metadata": {
+    "title": "Test Image",
+    "description": "A test image for media library",
+    "tags": ["test", "sample"],
+    "uploadedBy": "test@example.com",
+    "uploadedAt": "2024-12-14T15:35:56.000Z"
+  }
+}
