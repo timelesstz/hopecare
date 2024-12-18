@@ -22,7 +22,6 @@ import Projects from './pages/Projects';
 import NotFound from './pages/NotFound';
 import VolunteerDashboard from './pages/VolunteerDashboard';
 import { useAuth } from './context/AuthContext';
-import { StripeWrapper } from './components/stripe/StripeWrapper';
 
 interface ProtectedRouteProps {
   children: React.ReactNode;
@@ -65,11 +64,7 @@ const AppRouter: React.FC = () => {
       <Route path="/" element={<PageLayout />}>
         <Route index element={<Home />} />
         <Route path="about" element={<About />} />
-        <Route path="donate" element={
-          <StripeWrapper>
-            <Donate />
-          </StripeWrapper>
-        } />
+        <Route path="donate" element={<Donate />} />
         <Route path="events" element={<Events />} />
         <Route path="blog" element={<Blog />} />
         <Route path="blog/:id" element={<BlogPost />} />
