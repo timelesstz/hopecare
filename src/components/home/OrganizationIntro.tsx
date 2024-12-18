@@ -2,6 +2,7 @@ import React from 'react';
 import { motion } from 'framer-motion';
 import { Heart, Users, Globe, ArrowRight } from 'lucide-react';
 import { Link } from 'react-router-dom';
+import Image from '../common/Image';
 
 const OrganizationIntro = () => {
   return (
@@ -47,7 +48,7 @@ const OrganizationIntro = () => {
                 </div>
                 <div>
                   <h4 className="font-semibold text-gray-900">Inclusive Support</h4>
-                  <p className="text-sm text-gray-600">Serving 9 districts in Tanzania</p>
+                  <p className="text-sm text-gray-600">Serving all communities</p>
                 </div>
               </div>
               <div className="flex items-start gap-3">
@@ -55,18 +56,17 @@ const OrganizationIntro = () => {
                   <Globe className="w-6 h-6 text-rose-600" />
                 </div>
                 <div>
-                  <h4 className="font-semibold text-gray-900">Sustainable Impact</h4>
-                  <p className="text-sm text-gray-600">Building lasting solutions</p>
+                  <h4 className="font-semibold text-gray-900">Global Impact</h4>
+                  <p className="text-sm text-gray-600">Reaching across borders</p>
                 </div>
               </div>
             </div>
 
-            <Link 
+            <Link
               to="/about"
-              className="inline-flex items-center gap-2 text-rose-600 hover:text-rose-700 font-semibold group"
+              className="inline-flex items-center gap-2 text-rose-600 hover:text-rose-700 font-medium"
             >
-              Learn More About Us
-              <ArrowRight className="w-5 h-5 transform group-hover:translate-x-1 transition-transform" />
+              Learn More About Us <ArrowRight className="w-4 h-4" />
             </Link>
           </motion.div>
 
@@ -74,39 +74,39 @@ const OrganizationIntro = () => {
           <motion.div
             initial={{ opacity: 0, x: 20 }}
             whileInView={{ opacity: 1, x: 0 }}
-            transition={{ duration: 0.5, delay: 0.2 }}
+            transition={{ duration: 0.5 }}
             viewport={{ once: true }}
-            className="relative grid grid-cols-2 gap-4"
+            className="grid grid-cols-2 gap-4"
           >
             <div className="space-y-4">
-              <div className="aspect-[4/5] rounded-2xl overflow-hidden">
-                <img 
-                  src="/images/intro/community-1.jpg" 
-                  alt="Community support"
-                  className="w-full h-full object-cover"
+              <div className="aspect-[4/3] rounded-2xl overflow-hidden">
+                <Image
+                  src="/images/programs/community-support.jpg"
+                  alt="Community Support Program"
+                  className="w-full h-full object-cover hover:scale-105 transition-transform duration-300"
                 />
               </div>
-              <div className="aspect-[4/3] rounded-2xl overflow-hidden">
-                <img 
-                  src="/images/intro/community-2.jpg" 
-                  alt="Healthcare initiatives"
-                  className="w-full h-full object-cover"
+              <div className="aspect-square rounded-2xl overflow-hidden">
+                <Image
+                  src="/images/programs/education-program.jpg"
+                  alt="Education Program"
+                  className="w-full h-full object-cover hover:scale-105 transition-transform duration-300"
                 />
               </div>
             </div>
-            <div className="space-y-4 mt-8">
-              <div className="aspect-[4/3] rounded-2xl overflow-hidden">
-                <img 
-                  src="/images/intro/community-3.jpg" 
-                  alt="Education programs"
-                  className="w-full h-full object-cover"
+            <div className="space-y-4 pt-8">
+              <div className="aspect-square rounded-2xl overflow-hidden">
+                <Image
+                  src="/images/programs/healthcare-initiative.jpg"
+                  alt="Healthcare Initiative"
+                  className="w-full h-full object-cover hover:scale-105 transition-transform duration-300"
                 />
               </div>
-              <div className="aspect-[4/5] rounded-2xl overflow-hidden">
-                <img 
-                  src="/images/intro/community-4.jpg" 
-                  alt="Community building"
-                  className="w-full h-full object-cover"
+              <div className="aspect-[4/3] rounded-2xl overflow-hidden">
+                <Image
+                  src="/images/programs/empowerment-project.jpg"
+                  alt="Empowerment Project"
+                  className="w-full h-full object-cover hover:scale-105 transition-transform duration-300"
                 />
               </div>
             </div>

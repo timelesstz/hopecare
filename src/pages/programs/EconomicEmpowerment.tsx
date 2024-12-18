@@ -10,6 +10,37 @@ import ProgramGoals from '../../components/programs/ProgramGoals';
 import ProgramSuccessStories from '../../components/programs/ProgramSuccessStories';
 
 const EconomicEmpowerment = () => {
+  const pageHero = {
+    title: "Economic Empowerment",
+    subtitle: "Building sustainable livelihoods through entrepreneurship and skills development",
+    image: "https://images.unsplash.com/photo-1556911220-bff31c812dba?w=1200&auto=format&fit=crop&q=80"
+  };
+
+  const programImages = {
+    gallery: [
+      {
+        src: "https://images.unsplash.com/photo-1542744173-8e7e53415bb0?w=800&auto=format&fit=crop&q=80",
+        alt: "Business training",
+        title: "Skills Training"
+      },
+      {
+        src: "https://images.unsplash.com/photo-1556761175-5973dc0f32e7?w=800&auto=format&fit=crop&q=80",
+        alt: "Team collaboration",
+        title: "Business Development"
+      },
+      {
+        src: "https://images.unsplash.com/photo-1450101499163-c8848c66ca85?w=800&auto=format&fit=crop&q=80",
+        alt: "Local business",
+        title: "Entrepreneurship"
+      },
+      {
+        src: "https://images.unsplash.com/photo-1553729459-efe14ef6055d?w=800&auto=format&fit=crop&q=80",
+        alt: "Market success",
+        title: "Economic Growth"
+      }
+    ]
+  };
+
   const stats = {
     totalBeneficiaries: 3000,
     activeCases: 1500,
@@ -116,9 +147,9 @@ const EconomicEmpowerment = () => {
   return (
     <div className="min-h-screen">
       <PageHero 
-        title="Economic Empowerment Program"
-        subtitle="Building sustainable livelihoods through entrepreneurship"
-        image="/images/programs/economic-hero.jpg"
+        title={pageHero.title}
+        subtitle={pageHero.subtitle}
+        image={pageHero.image}
       />
       
       <div className="container mx-auto px-4 py-12">

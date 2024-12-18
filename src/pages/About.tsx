@@ -36,19 +36,19 @@ const About = () => {
       name: "Dr. Sarah Kimani",
       role: "Executive Director",
       bio: "With over 15 years of experience in community development, Dr. Kimani leads our organization's mission to transform lives.",
-      image: "https://images.unsplash.com/photo-1573497019940-1c28c88b4f3e?auto=format&fit=crop&q=80"
+      image: "/images/team/sarah-kimani.jpg"
     },
     {
       name: "John Mwangi",
       role: "Programs Director",
       bio: "John brings extensive experience in program management and community engagement to our initiatives.",
-      image: "https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?auto=format&fit=crop&q=80"
+      image: "/images/team/john-mwangi.jpg"
     },
     {
       name: "Grace Ochieng",
       role: "Community Relations",
       bio: "Grace ensures our programs remain responsive to community needs and maintain strong local partnerships.",
-      image: "https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?auto=format&fit=crop&q=80"
+      image: "/images/team/grace-ochieng.jpg"
     }
   ];
 
@@ -87,19 +87,34 @@ const About = () => {
 
   const partners = [
     {
-      name: "Ministry of Health",
-      logo: "https://example.com/moh-logo.png",
-      description: "Supporting our healthcare initiatives"
+      name: "Global Health Initiative",
+      logo: "/images/partners/global-health.png",
+      description: "Supporting healthcare programs worldwide"
     },
     {
-      name: "Education Foundation",
-      logo: "https://example.com/ef-logo.png",
-      description: "Partnering for quality education"
+      name: "Education First",
+      logo: "/images/partners/education-first.png",
+      description: "Advancing education accessibility"
     },
     {
-      name: "Community Bank",
-      logo: "https://example.com/cb-logo.png",
-      description: "Enabling economic empowerment"
+      name: "Community Foundation",
+      logo: "/images/partners/community-foundation.png",
+      description: "Building stronger communities"
+    },
+    {
+      name: "Green Earth Alliance",
+      logo: "/images/partners/green-earth.png",
+      description: "Environmental sustainability partner"
+    },
+    {
+      name: "Tech for Good",
+      logo: "/images/partners/tech-for-good.png",
+      description: "Digital empowerment solutions"
+    },
+    {
+      name: "Youth Empowerment Network",
+      logo: "/images/partners/youth-network.png",
+      description: "Supporting youth initiatives"
     }
   ];
 

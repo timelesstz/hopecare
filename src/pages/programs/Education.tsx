@@ -10,6 +10,37 @@ import ProgramGoals from '../../components/programs/ProgramGoals';
 import ProgramSuccessStories from '../../components/programs/ProgramSuccessStories';
 
 const Education = () => {
+  const pageHero = {
+    title: "Education Program",
+    subtitle: "Empowering through quality education and lifelong learning opportunities",
+    image: "https://images.unsplash.com/photo-1523240795612-9a054b0db644?w=1200&auto=format&fit=crop&q=80"
+  };
+
+  const programImages = {
+    gallery: [
+      {
+        src: "https://images.unsplash.com/photo-1509062522246-3755977927d7?w=800&auto=format&fit=crop&q=80",
+        alt: "Students studying together",
+        title: "Collaborative Learning"
+      },
+      {
+        src: "https://images.unsplash.com/photo-1503676260728-1c00da094a0b?w=800&auto=format&fit=crop&q=80",
+        alt: "Students in library",
+        title: "Research & Study"
+      },
+      {
+        src: "https://images.unsplash.com/photo-1427504494785-3a9ca7044f45?w=800&auto=format&fit=crop&q=80",
+        alt: "School children",
+        title: "Primary Education"
+      },
+      {
+        src: "https://images.unsplash.com/photo-1522202176988-66273c2fd55f?w=800&auto=format&fit=crop&q=80",
+        alt: "Group study",
+        title: "Student Collaboration"
+      }
+    ]
+  };
+
   const stats = {
     totalBeneficiaries: 2500,
     activeCases: 1800,
@@ -116,9 +147,9 @@ const Education = () => {
   return (
     <div className="min-h-screen">
       <PageHero 
-        title="Education Program"
-        subtitle="Empowering communities through quality education"
-        image="/images/programs/education-hero.jpg"
+        title={pageHero.title}
+        subtitle={pageHero.subtitle}
+        image={pageHero.image}
       />
       
       <div className="container mx-auto px-4 py-12">

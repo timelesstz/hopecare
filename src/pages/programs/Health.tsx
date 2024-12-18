@@ -10,6 +10,37 @@ import ProgramGoals from '../../components/programs/ProgramGoals';
 import ProgramSuccessStories from '../../components/programs/ProgramSuccessStories';
 
 const Health = () => {
+  const pageHero = {
+    title: "Healthcare Program",
+    subtitle: "Providing accessible healthcare services to underserved communities",
+    image: "https://images.unsplash.com/photo-1579684385127-1ef15d508118?w=1200&auto=format&fit=crop&q=80"
+  };
+
+  const programImages = {
+    gallery: [
+      {
+        src: "https://images.unsplash.com/photo-1666214280557-f1b5022eb634?w=800&auto=format&fit=crop&q=80",
+        alt: "Medical consultation",
+        title: "Patient Care"
+      },
+      {
+        src: "https://images.unsplash.com/photo-1631815589968-fdb09a223b1e?w=800&auto=format&fit=crop&q=80",
+        alt: "Health screening",
+        title: "Preventive Care"
+      },
+      {
+        src: "https://images.unsplash.com/photo-1505751172876-fa1923c5c528?w=800&auto=format&fit=crop&q=80",
+        alt: "Medical supplies",
+        title: "Healthcare Resources"
+      },
+      {
+        src: "https://images.unsplash.com/photo-1584516150909-c43483ee7932?w=800&auto=format&fit=crop&q=80",
+        alt: "Community health",
+        title: "Community Outreach"
+      }
+    ]
+  };
+
   const stats = {
     totalBeneficiaries: 5000,
     activeCases: 2500,
@@ -116,9 +147,9 @@ const Health = () => {
   return (
     <div className="min-h-screen">
       <PageHero 
-        title="Health Program"
-        subtitle="Providing quality healthcare to underserved communities"
-        image="/images/programs/health-hero.jpg"
+        title={pageHero.title}
+        subtitle={pageHero.subtitle}
+        image={pageHero.image}
       />
       
       <div className="container mx-auto px-4 py-12">
