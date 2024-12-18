@@ -1,8 +1,7 @@
-import React, { useState, useEffect } from 'react';
-import { Heart, Gift, Users, Trophy, Sparkles, ArrowRight, Target, Calendar, Repeat, CreditCard } from 'lucide-react';
+import React, { useState } from 'react';
+import { Heart, Gift, Users, Trophy, Sparkles, ArrowRight, Target, Calendar, Repeat } from 'lucide-react';
 import DonationTier from '../components/DonationTier';
 import CustomDonationInput from '../components/CustomDonationInput';
-import StripePaymentForm from '../components/StripePaymentForm';
 import { motion } from 'framer-motion';
 import { useDonation } from '../context/DonationContext'; 
 
@@ -79,7 +78,7 @@ const DONATION_TYPES = [
   {
     id: 'one-time',
     title: 'One-time',
-    icon: <CreditCard className="w-5 h-5" />,
+    icon: <Gift className="w-5 h-5" />,
     description: 'Make a single donation',
   },
   {
@@ -105,23 +104,6 @@ const Donate = () => {
   const [donationType, setDonationType] = useState<'one-time' | 'monthly' | 'recurring'>('one-time');
   const [showSuccessMessage, setShowSuccessMessage] = useState(false);
   const [selectedTierId, setSelectedTierId] = useState<string | null>(null);
-
-  useEffect(() => {
-    if ((selectedAmount && !error) || (isCustomSelected && customAmount && !error)) {
-      const amount = selectedAmount || parseFloat(customAmount);
-      if (amount > 0) {
-        setDonationData({
-          amount,
-          currency: 'usd',
-          donationType: donationType === 'recurring' ? 'monthly' : donationType,
-        });
-      } else {
-        setDonationData(null);
-      }
-    } else {
-      setDonationData(null);
-    }
-  }, [selectedAmount, customAmount, donationType, error, isCustomSelected, setDonationData]);
 
   const handleTierSelect = (tierId: string, amount: number) => {
     setSelectedTierId(tierId);
@@ -278,11 +260,18 @@ const Donate = () => {
           className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 py-8"
         >
           <div className="bg-white rounded-lg shadow-lg p-6">
-            <StripePaymentForm
-              amount={selectedAmount || parseFloat(customAmount)}
-              donationType={donationType}
-              onSuccess={handleSuccess}
-            />
+            <div className="text-center">
+              <h3 className="text-2xl font-semibold mb-4">Complete Your Donation</h3>
+              <p className="text-gray-600 mb-6">
+                Thank you for your generosity! Please click the button below to proceed with your donation.
+              </p>
+              <button
+                onClick={handleSuccess}
+                className="bg-primary-600 text-white px-6 py-3 rounded-lg hover:bg-primary-700 transition-colors"
+              >
+                Complete Donation
+              </button>
+            </div>
           </div>
         </motion.div>
       )}
