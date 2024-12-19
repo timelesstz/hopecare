@@ -99,15 +99,22 @@ const Health = () => {
       id: 1,
       name: 'David Wilson',
       role: 'Patient',
-      content: 'The healthcare program provided me with life-saving treatment I couldn\'t afford elsewhere.',
-      image: '/images/testimonials/david.jpg'
+      content: 'The healthcare program at HopeCare was a lifeline for my family. When I couldn\'t afford the treatment I desperately needed, they provided not just medical care but also emotional support throughout my recovery journey. Their dedication to patient care is truly remarkable.',
+      image: 'https://images.unsplash.com/photo-1500048993953-d23a436266cf?w=400&auto=format&fit=crop&q=80'
     },
     {
       id: 2,
       name: 'Dr. Emily Brown',
       role: 'Healthcare Provider',
-      content: 'Working with this program has allowed me to serve those who need care the most.',
-      image: '/images/testimonials/emily.jpg'
+      content: 'Being part of HopeCare\'s medical team has been incredibly fulfilling. We\'re not just treating illnesses; we\'re building lasting relationships with communities and making healthcare accessible to those who need it most. The impact we\'re making is visible every day.',
+      image: 'https://images.unsplash.com/photo-1559839734-2b71ea197ec2?w=400&auto=format&fit=crop&q=80'
+    },
+    {
+      id: 3,
+      name: 'Maria Rodriguez',
+      role: 'Community Health Worker',
+      content: 'Through HopeCare\'s mobile clinic program, we\'ve been able to reach remote villages and provide essential healthcare services. Seeing the transformation in community health awareness and outcomes has been incredibly rewarding.',
+      image: 'https://images.unsplash.com/photo-1551836022-d5d88e9218df?w=400&auto=format&fit=crop&q=80'
     }
   ];
 
@@ -115,32 +122,49 @@ const Health = () => {
     {
       year: 2020,
       title: 'Program Launch',
-      description: 'Established first 3 health centers'
+      description: 'Established first 3 health centers with basic medical facilities and emergency care services'
     },
     {
       year: 2021,
       title: 'Mobile Clinics',
-      description: 'Launched mobile healthcare units'
+      description: 'Launched 5 mobile healthcare units to reach remote communities, serving over 1000 patients monthly'
     },
     {
       year: 2022,
       title: 'Specialist Care',
-      description: 'Introduced specialized medical services'
+      description: 'Introduced specialized medical services including pediatric care, maternal health, and chronic disease management'
+    },
+    {
+      year: 2023,
+      title: 'Digital Health',
+      description: 'Implemented telemedicine services and electronic health records for better patient care'
     }
   ];
 
   const successStories = [
     {
       id: 1,
-      title: 'Life-Saving Care',
-      content: 'How our emergency care program saved John\'s life',
-      image: '/images/success/john.jpg'
+      title: 'Emergency Care Success',
+      content: 'John\'s life-threatening accident required immediate medical attention. Thanks to our 24/7 emergency care facility and skilled medical team, he received timely treatment and made a full recovery. This case highlighted the crucial importance of having accessible emergency medical services in underserved areas.',
+      image: 'https://images.unsplash.com/photo-1516549655169-df83a0774514?w=800&auto=format&fit=crop&q=80'
     },
     {
       id: 2,
-      title: 'Community Health',
-      content: 'Transforming rural healthcare access',
-      image: '/images/success/community.jpg'
+      title: 'Rural Healthcare Revolution',
+      content: 'Our mobile clinic initiative has transformed healthcare access in rural communities. By bringing medical services directly to remote villages, we\'ve provided essential care to over 5,000 residents who previously had to travel hours for basic medical attention. The program now serves 15 villages regularly.',
+      image: 'https://images.unsplash.com/photo-1576091160399-112ba8d25d1d?w=800&auto=format&fit=crop&q=80'
+    },
+    {
+      id: 3,
+      title: 'Maternal Health Impact',
+      content: 'Our maternal health program has achieved remarkable success in improving pregnancy outcomes. Through regular check-ups, nutritional support, and skilled birth attendance, we\'ve helped over 500 mothers have safe pregnancies and healthy babies. The program has reduced complications by 75%.',
+      image: 'https://images.unsplash.com/photo-1584515979956-d9f6e5d09982?w=800&auto=format&fit=crop&q=80'
+    },
+    {
+      id: 4,
+      title: 'Preventive Care Success',
+      content: 'The launch of our preventive health screening program has led to early detection and treatment of various conditions. Regular health camps and awareness sessions have educated communities about the importance of preventive care, resulting in a 60% increase in early disease detection.',
+      image: 'https://images.unsplash.com/photo-1631815587646-b85a1bb027e1?w=800&auto=format&fit=crop&q=80'
     }
   ];
 

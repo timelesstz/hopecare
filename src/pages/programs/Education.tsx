@@ -99,15 +99,22 @@ const Education = () => {
       id: 1,
       name: 'Sarah Johnson',
       role: 'Student',
-      content: 'The education program has completely transformed my life. I now have hope for a brighter future.',
-      image: '/images/testimonials/sarah.jpg'
+      content: 'The education program at HopeCare has opened doors I never thought possible. Thanks to the scholarship and mentoring support, I am now pursuing my dream of becoming a teacher. The dedicated staff and quality education have truly transformed my life.',
+      image: 'https://images.unsplash.com/photo-1438761681033-6461ffad8d80?w=400&auto=format&fit=crop&q=80'
     },
     {
       id: 2,
       name: 'James Smith',
       role: 'Teacher',
-      content: 'Being part of this program has helped me become a better educator and mentor.',
-      image: '/images/testimonials/james.jpg'
+      content: 'Being part of HopeCare\'s education program has revolutionized my teaching approach. The professional development opportunities and resources provided have helped me create a more engaging and effective learning environment for my students.',
+      image: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=400&auto=format&fit=crop&q=80'
+    },
+    {
+      id: 3,
+      name: 'Emily Chen',
+      role: 'Parent',
+      content: 'I\'ve seen remarkable improvement in my child\'s academic performance and confidence since joining HopeCare\'s after-school program. The personalized attention and supportive environment make all the difference.',
+      image: 'https://images.unsplash.com/photo-1438761681033-6461ffad8d80?w=400&auto=format&fit=crop&q=80'
     }
   ];
 
@@ -132,15 +139,21 @@ const Education = () => {
   const successStories = [
     {
       id: 1,
-      title: 'From Student to Scholar',
-      content: 'Maria\'s journey from a rural village to university scholarship',
-      image: '/images/success/maria.jpg'
+      title: 'From Rural Village to University Scholar',
+      content: 'Maria\'s journey from a small rural village to winning a full university scholarship is a testament to perseverance. Through HopeCare\'s education program, she received quality education, mentoring, and the support needed to achieve her dreams.',
+      image: 'https://images.unsplash.com/photo-1517245386807-bb43f82c33c4?w=800&auto=format&fit=crop&q=80'
     },
     {
       id: 2,
       title: 'Building Future Leaders',
-      content: 'How our leadership program transformed local youth',
-      image: '/images/success/leaders.jpg'
+      content: 'Our leadership development program has transformed local youth into community champions. Through workshops, mentoring, and hands-on projects, students learn valuable leadership skills while making a positive impact in their communities.',
+      image: 'https://images.unsplash.com/photo-1529390079861-591de354faf5?w=800&auto=format&fit=crop&q=80'
+    },
+    {
+      id: 3,
+      title: 'Technology Education Initiative',
+      content: 'Our digital literacy program has equipped over 500 students with essential computer skills. By partnering with tech companies, we provide access to modern equipment and industry-relevant training.',
+      image: 'https://images.unsplash.com/photo-1509062522246-3755977927d7?w=800&auto=format&fit=crop&q=80'
     }
   ];
 

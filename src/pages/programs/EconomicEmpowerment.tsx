@@ -98,16 +98,23 @@ const EconomicEmpowerment = () => {
     {
       id: 1,
       name: 'Grace Thompson',
-      role: 'Entrepreneur',
-      content: 'The program gave me the skills and support I needed to start my own successful business.',
-      image: '/images/testimonials/grace.jpg'
+      role: 'Small Business Owner',
+      content: 'HopeCare\'s economic empowerment program transformed my life. With their business training and microloan support, I turned my small food stall into a successful catering business. Now I employ five people from my community and can provide for my family\'s needs.',
+      image: 'https://images.unsplash.com/photo-1573497019940-1c28c88b4f3e?w=400&auto=format&fit=crop&q=80'
     },
     {
       id: 2,
       name: 'Michael Chen',
-      role: 'Business Owner',
-      content: 'Thanks to the microloan program, I was able to expand my shop and hire more employees.',
-      image: '/images/testimonials/michael.jpg'
+      role: 'Tech Entrepreneur',
+      content: 'The digital skills training and mentorship I received were invaluable. What started as a small computer repair shop has grown into a successful IT services company. The program\'s network of mentors continues to guide my business growth.',
+      image: 'https://images.unsplash.com/photo-1537511446984-935f663eb1f4?w=400&auto=format&fit=crop&q=80'
+    },
+    {
+      id: 3,
+      name: 'Amina Hassan',
+      role: 'Artisan Cooperative Leader',
+      content: 'Through HopeCare\'s cooperative development program, we united local artisans to create a thriving marketplace. The business management training and market access support have helped us reach international customers.',
+      image: 'https://images.unsplash.com/photo-1594744803329-e58b31de8bf5?w=400&auto=format&fit=crop&q=80'
     }
   ];
 
@@ -115,32 +122,55 @@ const EconomicEmpowerment = () => {
     {
       year: 2020,
       title: 'Program Launch',
-      description: 'Started with basic business training'
+      description: 'Initiated comprehensive business training programs and established first entrepreneurship center serving 200 participants'
     },
     {
       year: 2021,
       title: 'Microloan Program',
-      description: 'Introduced financial support system'
+      description: 'Launched microloan initiative providing 500 small business loans and financial literacy training to aspiring entrepreneurs'
     },
     {
       year: 2022,
-      title: 'Digital Skills',
-      description: 'Added e-commerce and digital marketing training'
+      title: 'Digital Skills Integration',
+      description: 'Introduced e-commerce, digital marketing, and online business management courses, training over 1000 participants'
+    },
+    {
+      year: 2023,
+      title: 'Market Expansion',
+      description: 'Established partnerships with 50 companies for job placement and created an online marketplace for program graduates'
     }
   ];
 
   const successStories = [
     {
       id: 1,
-      title: 'Market Success',
-      content: 'How Sarah turned her small stall into a thriving business',
-      image: '/images/success/sarah-business.jpg'
+      title: 'From Market Stall to Restaurant Chain',
+      content: 'Sarah\'s journey began with a small food stall and a dream. Through our business development program, she received training in food service management, financial planning, and marketing. With a microloan of $5,000, she opened her first restaurant. Today, she owns three locations and employs 25 people from the community.',
+      image: 'https://images.unsplash.com/photo-1516733968668-dbdce39c4651?w=800&auto=format&fit=crop&q=80'
     },
     {
       id: 2,
-      title: 'Tech Innovation',
-      content: 'James\' journey from trainee to tech entrepreneur',
-      image: '/images/success/james-tech.jpg'
+      title: 'Digital Innovation Success',
+      content: 'James transformed his tech repair skills into a thriving IT solutions company. Our digital skills program provided him with advanced technical training and business management skills. His company now provides IT support to over 50 local businesses and has created job opportunities for 15 young professionals.',
+      image: 'https://images.unsplash.com/photo-1553877522-43269d4ea984?w=800&auto=format&fit=crop&q=80'
+    },
+    {
+      id: 3,
+      title: 'Women\'s Cooperative Achievement',
+      content: 'A group of 20 women artisans formed a cooperative through our community enterprise program. With training in product development, quality control, and international trade, they now export handcrafted goods to three continents. Their success has inspired two similar cooperatives in neighboring communities.',
+      image: 'https://images.unsplash.com/photo-1509099836639-18ba1795216d?w=800&auto=format&fit=crop&q=80'
+    },
+    {
+      id: 4,
+      title: 'Youth Agriculture Innovation',
+      content: 'A team of young graduates used our agricultural entrepreneurship program to start a modern farming initiative. Using sustainable practices and technology, they\'ve created a successful organic produce business that supplies local restaurants and markets. Their model has been replicated by 10 other youth groups.',
+      image: 'https://images.unsplash.com/photo-1529693662653-9d480530a697?w=800&auto=format&fit=crop&q=80'
+    },
+    {
+      id: 5,
+      title: 'E-commerce Breakthrough',
+      content: 'Through our digital marketplace program, Maria developed an online platform connecting local craftspeople to global markets. Her platform now supports over 100 local artisans, increasing their income by an average of 300%. The success has attracted partnership offers from major e-commerce companies.',
+      image: 'https://images.unsplash.com/photo-1472851294608-062f824d29cc?w=800&auto=format&fit=crop&q=80'
     }
   ];
 

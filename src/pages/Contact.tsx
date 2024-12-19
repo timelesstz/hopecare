@@ -108,7 +108,7 @@ const Contact = () => {
       <PageHero
         title="Contact Us"
         subtitle="Get in touch with us for any questions or inquiries"
-        imagePath="/images/contact-hero.jpg"
+        image="https://images.unsplash.com/photo-1486312338219-ce68d2c6f44d?w=1200&auto=format&fit=crop&q=80"
       />
 
       <div className="container mx-auto px-4 py-12">
