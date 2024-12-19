@@ -5,22 +5,22 @@ import { DonationProvider } from './context/DonationContext';
 import { AuthProvider } from './context/AuthContext';
 import { ThemeProvider } from './context/ThemeContext';
 import ErrorBoundary from './components/ErrorBoundary';
-import AppRouter from './router';
+import AppRouter from './routes';
 
 const App: FC = () => {
   return (
     <ErrorBoundary>
-      <AuthProvider>
-        <ThemeProvider>
-          <DonationProvider>
-            <PageProvider>
-              <BrowserRouter>
+      <BrowserRouter>
+        <AuthProvider>
+          <ThemeProvider>
+            <DonationProvider>
+              <PageProvider>
                 <AppRouter />
-              </BrowserRouter>
-            </PageProvider>
-          </DonationProvider>
-        </ThemeProvider>
-      </AuthProvider>
+              </PageProvider>
+            </DonationProvider>
+          </ThemeProvider>
+        </AuthProvider>
+      </BrowserRouter>
     </ErrorBoundary>
   );
 };
