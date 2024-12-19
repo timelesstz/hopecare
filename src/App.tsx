@@ -1,26 +1,26 @@
 import { FC } from 'react';
 import { BrowserRouter } from 'react-router-dom';
-import { PageProvider } from './contexts/PageContext';
-import { DonationProvider } from './contexts/DonationContext';
-import { AuthProvider } from './contexts/AuthContext';
-import { ThemeProvider } from './contexts/ThemeContext';
+import { PageProvider } from './context/PageContext';
+import { DonationProvider } from './context/DonationContext';
+import { AuthProvider } from './context/AuthContext';
+import { ThemeProvider } from './context/ThemeContext';
 import ErrorBoundary from './components/ErrorBoundary';
-import AppRouter from './routes';
+import AppRouter from './router';
 
 const App: FC = () => {
   return (
     <ErrorBoundary>
-      <BrowserRouter>
-        <AuthProvider>
-          <ThemeProvider>
-            <DonationProvider>
-              <PageProvider>
+      <AuthProvider>
+        <ThemeProvider>
+          <DonationProvider>
+            <PageProvider>
+              <BrowserRouter>
                 <AppRouter />
-              </PageProvider>
-            </DonationProvider>
-          </ThemeProvider>
-        </AuthProvider>
-      </BrowserRouter>
+              </BrowserRouter>
+            </PageProvider>
+          </DonationProvider>
+        </ThemeProvider>
+      </AuthProvider>
     </ErrorBoundary>
   );
 };

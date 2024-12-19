@@ -103,11 +103,11 @@ const Contact = () => {
   };
 
   return (
-    <div className="bg-white min-h-screen">
+    <div className="min-h-screen bg-gray-50">
       <AdminEditButton pageId="contact" />
       <PageHero
         title="Contact Us"
-        subtitle="Get in touch with us for any questions or inquiries"
+        subtitle="Get in touch with us. We're here to help and answer any questions you may have."
         image="https://images.unsplash.com/photo-1486312338219-ce68d2c6f44d?w=1200&auto=format&fit=crop&q=80"
       />
 
