@@ -1,0 +1,12 @@
+{
+  "name": "test-document.pdf",
+  "type": "application/pdf",
+  "size": 125000,
+  "metadata": {
+    "title": "Test Document",
+    "description": "A test PDF document for media library",
+    "tags": ["document", "test"],
+    "uploadedBy": "test@example.com",
+    "uploadedAt": "2024-12-14T15:35:56.000Z"
+  }
+}
