@@ -98,15 +98,15 @@ const About = () => {
   const partners = [
     {
       name: "Ipolili Farms",
-      logo: "public/logos/ipolile.jpeg",
+      logo: "logos/ipolile.jpeg",
     },
     {
       name: "NGO source",
-      logo: "public/logos/NGOsource.jpeg",
+      logo: "logos/NGOsource.jpeg",
     },
     {
       name: "Vibrant Village Foundation",
-      logo: "public/logos/vibrantvillage.jpeg",
+      logo: "logos/vibrantvillage.jpeg",
     }
   ];
 
