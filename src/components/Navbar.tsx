@@ -96,7 +96,7 @@ const Navbar = () => {
             <Link to="/" className="flex-shrink-0 flex items-center">
               <img
                 className="h-12 w-auto transition-transform duration-300 hover:scale-105"
-                src="/logo.png"
+                src="logos/logo.png"
                 alt="HopeCare"
               />
             </Link>

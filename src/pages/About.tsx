@@ -97,34 +97,16 @@ const About = () => {
 
   const partners = [
     {
-      name: "Global Health Initiative",
-      logo: "/images/partners/global-health.png",
-      description: "Supporting healthcare programs worldwide"
+      name: "Ipolili Farms",
+      logo: "public/logos/ipolile.jpeg",
     },
     {
-      name: "Education First",
-      logo: "/images/partners/education-first.png",
-      description: "Advancing education accessibility"
+      name: "NGO source",
+      logo: "public/logos/NGOsource.jpeg",
     },
     {
-      name: "Community Foundation",
-      logo: "/images/partners/community-foundation.png",
-      description: "Building stronger communities"
-    },
-    {
-      name: "Green Earth Alliance",
-      logo: "/images/partners/green-earth.png",
-      description: "Environmental sustainability partner"
-    },
-    {
-      name: "Tech for Good",
-      logo: "/images/partners/tech-for-good.png",
-      description: "Digital empowerment solutions"
-    },
-    {
-      name: "Youth Empowerment Network",
-      logo: "/images/partners/youth-network.png",
-      description: "Supporting youth initiatives"
+      name: "Vibrant Village Foundation",
+      logo: "public/logos/vibrantvillage.jpeg",
     }
   ];
 
