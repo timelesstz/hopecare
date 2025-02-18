@@ -12,7 +12,7 @@ const events = [
     category: 'Health',
     attendees: 45,
     description: 'Join us for an interactive workshop on community health and wellness.',
-    image: '/images/events/health-workshop.jpg'
+    image: '/event/community-event.jpeg'
   },
   {
     id: 2,
@@ -23,7 +23,7 @@ const events = [
     category: 'Education',
     attendees: 60,
     description: 'Empowering young leaders to make a difference in their communities.',
-    image: '/images/events/youth-summit.jpg'
+    image: '/event/youth-event.jpeg'
   },
   {
     id: 3,
@@ -34,18 +34,7 @@ const events = [
     category: 'Fundraising',
     attendees: 120,
     description: 'An elegant evening of giving back to support our community initiatives.',
-    image: '/images/events/fundraising-gala.jpg'
-  },
-  {
-    id: 4,
-    title: 'Environmental Clean-up Drive',
-    date: '2025-01-05',
-    time: '9:00 AM',
-    location: 'City Park',
-    category: 'Environment',
-    attendees: 80,
-    description: 'Help us make our community cleaner and greener.',
-    image: '/images/events/cleanup-drive.jpg'
+    image: '/event/charity-event.jpeg'
   }
 ];
 

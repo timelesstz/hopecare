@@ -7,7 +7,7 @@ const programs = [
     title: "Education Support",
     icon: GraduationCap,
     description: "Providing educational resources and support to underprivileged children, ensuring access to quality education.",
-    image: "https://images.unsplash.com/photo-1503676260728-1c00da094a0b?auto=format&fit=crop&q=80",
+    image: "featured/education.jpeg",
     link: "/programs/education"
   },
   {
@@ -20,9 +20,9 @@ const programs = [
   {
     title: "Environmental Action",
     icon: Sprout,
-    description: "Working with communities to protect and preserve our environment for future generations.",
-    image: "https://images.unsplash.com/photo-1542601906990-b4d3fb778b09?auto=format&fit=crop&q=80",
-    link: "/programs/environment"
+    description: "Empowering women and youth through sustainable development initiatives. We provide capacity building, mentorship, and access to capital for over 150 groups in agriculture, renewable energy, and community enterprises, creating lasting environmental and economic impact.",
+    image: "featured/environment.jpeg",
+    link: "/programs/economic-empowerment"
   }
 ];
 

@@ -7,14 +7,14 @@ const testimonials = [
     quote: "The impact HopeCare has made in our community is immeasurable. They've helped transform lives through their education programs.",
     author: "Sarah M.",
     role: "Community Leader",
-    image: "https://images.unsplash.com/photo-1494790108377-be9c29b29330?auto=format&fit=crop&q=80"
+    image: "testimonials/sarah.jpeg"
   },
   {
     id: 2,
     quote: "Thanks to HopeCare's support, we've been able to start our own small business and provide for our families.",
-    author: "John D.",
+    author: "Michael T.",
     role: "Program Beneficiary",
-    image: "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&q=80"
+    image: "testimonials/michael.jpeg"
   },
   {
     id: 3,

@@ -9,7 +9,7 @@ const news = [
     title: "New Education Center Opens in Arusha",
     excerpt: "Expanding our reach to provide quality education to more children in the community.",
     date: "March 15, 2024",
-    image: "https://images.unsplash.com/photo-1497633762265-9d179a990aa6?auto=format&fit=crop&q=80",
+    image: "/news/education-news.jpeg",
     category: "Education",
     readTime: "3 min read"
   },
@@ -18,7 +18,7 @@ const news = [
     title: "Community Health Initiative Reaches Milestone",
     excerpt: "Over 1,000 families have benefited from our healthcare programs this year.",
     date: "March 10, 2024",
-    image: "https://images.unsplash.com/photo-1576091160550-2173dba999ef?auto=format&fit=crop&q=80",
+    image: "/news/community-news.jpeg",
     category: "Health",
     readTime: "4 min read"
   },
@@ -27,7 +27,7 @@ const news = [
     title: "Volunteer Training Program Launches",
     excerpt: "New program aims to enhance skills and impact of our volunteer network.",
     date: "March 5, 2024",
-    image: "https://images.unsplash.com/photo-1559027615-cd4628902d4a?auto=format&fit=crop&q=80",
+    image: "/news/volunteer-news.jpeg",
     category: "Community",
     readTime: "5 min read"
   }
