@@ -34,6 +34,14 @@ const DonorsPage: React.FC = () => {
   const [filterStatus, setFilterStatus] = useState<string>('all');
   const [noDonorsFound, setNoDonorsFound] = useState<boolean>(false);
   const [creatingDonor, setCreatingDonor] = useState<boolean>(false);
+  const [newDonor, setNewDonor] = useState({
+    name: '',
+    email: '',
+    phone: '',
+    preferredCauses: [] as string[],
+    isAnonymous: false,
+    isRecurring: false
+  });
 
   useEffect(() => {
     // Check if user has admin permissions
@@ -95,22 +103,19 @@ const DonorsPage: React.FC = () => {
       setError(null);
       setNoDonorsFound(false);
 
-      try {
-        const donorsQuery = query(
-          collection(db, 'users'),
-          where('role', '==', 'DONOR'),
-          orderBy('created_at', 'desc')
-        );
-        
-        try {
+      const result = await safeFirestoreOperation(
+        async () => {
+          const donorsQuery = query(
+            collection(db, 'users'),
+            where('role', '==', 'DONOR'),
+            orderBy('created_at', 'desc')
+          );
+          
           const donorsSnapshot = await getDocs(donorsQuery);
           
           if (donorsSnapshot.empty) {
             // No donors found, but the query worked
-            setDonors([]);
-            setError('No donor users found. Donors can sign up when making a donation.');
-            setNoDonorsFound(true);
-            return;
+            return { empty: true, docs: [] };
           }
           
           const donorsList: Donor[] = [];
@@ -138,29 +143,68 @@ const DonorsPage: React.FC = () => {
             }
           });
           
-          setDonors(donorsList);
-        } catch (queryError) {
-          logFirestoreError(queryError, 'donors-query-execution');
-          throw queryError;
-        }
-      } catch (err) {
-        logFirestoreError(err, 'donors-collection-access');
-        
-        // Check if it's a permission error
-        if (isPermissionError(err)) {
-          setError('You do not have permission to access donor users');
-          toast.error('You do not have permission to access donor users');
-        } else if (err instanceof Error && err.message.includes('collection not found')) {
-          setError('Users collection does not exist. Please check your database setup.');
-          toast.error('Users collection not found. Please contact system administrator.');
-        } else {
-          setError(`Failed to fetch donor users: ${err instanceof Error ? err.message : 'Unknown error'}`);
-          toast.error('Failed to fetch donor users. Please try again later.');
+          return { empty: false, docs: donorsList };
+        },
+        'Failed to fetch donor users. Please try again later.',
+        'donors-fetch'
+      );
+      
+      if (!result) {
+        // The operation failed and error was already handled by safeFirestoreOperation
+        setError('Failed to fetch donor users');
+        return;
+      }
+      
+      if (result.empty) {
+        setDonors([]);
+        setError('No donor users found. Donors can sign up when making a donation.');
+        setNoDonorsFound(true);
+        return;
+      }
+      
+      setDonors(result.docs);
+    } catch (err) {
+      // This catch is for any errors not caught by safeFirestoreOperation
+      logFirestoreError(err, 'donors-fetch-outer');
+      
+      // Special handling for missing index errors
+      if (err instanceof Error && err.message.includes('requires an index')) {
+        const indexUrl = err.message.match(/https:\/\/console\.firebase\.google\.com[^\s]*/)?.[0];
+        if (indexUrl) {
+          setError(
+            <>
+              This query requires a Firestore index. Please{' '}
+              <a 
+                href={indexUrl} 
+                target="_blank" 
+                rel="noopener noreferrer"
+                className="text-blue-600 underline"
+              >
+                click here
+              </a>{' '}
+              to create it.
+            </>
+          );
+          toast.error(
+            <div>
+              Missing Firestore index. 
+              <a 
+                href={indexUrl}
+                target="_blank" 
+                rel="noopener noreferrer"
+                className="ml-2 underline text-blue-600"
+              >
+                Create it here
+              </a>
+            </div>,
+            { duration: 10000 }
+          );
+          return;
         }
       }
-    } catch (err) {
-      logFirestoreError(err, 'donors-fetch-outer');
+      
       setError('An unexpected error occurred while fetching donor users');
+      toast.error('An unexpected error occurred. Please try again later.');
     } finally {
       setLoading(false);
     }
@@ -246,6 +290,61 @@ const DonorsPage: React.FC = () => {
     
     setEditingDonor({
       ...editingDonor,
+      preferredCauses: updatedCauses
+    });
+  };
+
+  const handleAddDonor = async (e: React.FormEvent) => {
+    e.preventDefault();
+    
+    const result = await safeFirestoreOperation(
+      async () => {
+        // In a real app, you would send an invitation email here
+        // For this demo, we'll just create the user directly
+        const newDonorRef = doc(collection(db, 'users'));
+        await setDoc(newDonorRef, {
+          name: newDonor.name,
+          email: newDonor.email,
+          phone: newDonor.phone || '',
+          role: 'DONOR',
+          status: 'ACTIVE',
+          totalDonated: 0,
+          donationCount: 0,
+          preferredCauses: newDonor.preferredCauses,
+          isAnonymous: newDonor.isAnonymous,
+          isRecurring: newDonor.isRecurring,
+          created_at: serverTimestamp(),
+          updated_at: serverTimestamp(),
+          created_by: user?.email || 'system'
+        });
+        return newDonorRef.id;
+      },
+      'Failed to add donor',
+      'donors-add'
+    );
+    
+    if (result) {
+      toast.success('Donor added successfully!');
+      setAddingDonor(false);
+      setNewDonor({
+        name: '',
+        email: '',
+        phone: '',
+        preferredCauses: [],
+        isAnonymous: false,
+        isRecurring: false
+      });
+      fetchDonors();
+    }
+  };
+
+  const handleNewDonorCauseChange = (cause: string) => {
+    const updatedCauses = newDonor.preferredCauses.includes(cause)
+      ? newDonor.preferredCauses.filter(c => c !== cause)
+      : [...newDonor.preferredCauses, cause];
+    
+    setNewDonor({
+      ...newDonor,
       preferredCauses: updatedCauses
     });
   };
@@ -613,6 +712,112 @@ const DonorsPage: React.FC = () => {
                       disabled={loading}
                     >
                       {loading ? 'Updating...' : 'Update Donor'}
+                    </button>
+                  </div>
+                </form>
+              </div>
+            </div>
+          )}
+
+          {/* Add Donor Modal */}
+          {addingDonor && (
+            <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+              <div className="bg-white rounded-lg p-6 max-w-md w-full">
+                <h2 className="text-xl font-bold mb-4">Add New Donor</h2>
+                <form onSubmit={handleAddDonor}>
+                  <div className="space-y-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Name</label>
+                      <input
+                        type="text"
+                        value={newDonor.name}
+                        onChange={(e) => setNewDonor({ ...newDonor, name: e.target.value })}
+                        className="w-full p-2 border border-gray-300 rounded-md"
+                        required
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
+                      <input
+                        type="email"
+                        value={newDonor.email}
+                        onChange={(e) => setNewDonor({ ...newDonor, email: e.target.value })}
+                        className="w-full p-2 border border-gray-300 rounded-md"
+                        required
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Phone</label>
+                      <input
+                        type="text"
+                        value={newDonor.phone}
+                        onChange={(e) => setNewDonor({ ...newDonor, phone: e.target.value })}
+                        className="w-full p-2 border border-gray-300 rounded-md"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Preferences</label>
+                      <div className="space-y-2">
+                        <div className="flex items-center">
+                          <input
+                            type="checkbox"
+                            id="new-anonymous"
+                            checked={newDonor.isAnonymous}
+                            onChange={() => setNewDonor({ ...newDonor, isAnonymous: !newDonor.isAnonymous })}
+                            className="h-4 w-4 text-rose-600 focus:ring-rose-500 border-gray-300 rounded"
+                          />
+                          <label htmlFor="new-anonymous" className="ml-2 block text-sm text-gray-900">
+                            Anonymous Donor
+                          </label>
+                        </div>
+                        <div className="flex items-center">
+                          <input
+                            type="checkbox"
+                            id="new-recurring"
+                            checked={newDonor.isRecurring}
+                            onChange={() => setNewDonor({ ...newDonor, isRecurring: !newDonor.isRecurring })}
+                            className="h-4 w-4 text-rose-600 focus:ring-rose-500 border-gray-300 rounded"
+                          />
+                          <label htmlFor="new-recurring" className="ml-2 block text-sm text-gray-900">
+                            Recurring Donor
+                          </label>
+                        </div>
+                      </div>
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Preferred Causes</label>
+                      <div className="grid grid-cols-2 gap-2">
+                        {['Education', 'Health', 'Environment', 'Poverty Relief', 'Community Development', 'Youth Programs', 'Elderly Care', 'Disaster Relief', 'Animal Welfare'].map((cause) => (
+                          <div key={cause} className="flex items-center">
+                            <input
+                              type="checkbox"
+                              id={`new-cause-${cause}`}
+                              checked={newDonor.preferredCauses.includes(cause)}
+                              onChange={() => handleNewDonorCauseChange(cause)}
+                              className="h-4 w-4 text-rose-600 focus:ring-rose-500 border-gray-300 rounded"
+                            />
+                            <label htmlFor={`new-cause-${cause}`} className="ml-2 block text-sm text-gray-900">
+                              {cause}
+                            </label>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                  <div className="flex justify-end space-x-2 mt-6">
+                    <button
+                      type="button"
+                      onClick={() => setAddingDonor(false)}
+                      className="px-4 py-2 border border-gray-300 text-gray-700 rounded-md hover:bg-gray-50"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="submit"
+                      className="px-4 py-2 bg-rose-600 text-white rounded-md hover:bg-rose-700"
+                      disabled={loading}
+                    >
+                      {loading ? 'Adding...' : 'Add Donor'}
                     </button>
                   </div>
                 </form>

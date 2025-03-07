@@ -1,6 +1,6 @@
 import { FirebaseError } from 'firebase/app';
 import { toast } from 'react-hot-toast';
-import { isPermissionError, logFirestoreError } from './firestoreErrorHandler';
+import { isPermissionError, logFirestoreError, isMissingIndexError, extractIndexUrl } from './firestoreErrorHandler';
 
 /**
  * Retry a function with exponential backoff
@@ -24,8 +24,8 @@ export async function retryWithBackoff<T>(
       throw error;
     }
     
-    // Don't retry for permission errors
-    if (isPermissionError(error)) {
+    // Don't retry for permission errors or missing index errors
+    if (isPermissionError(error) || isMissingIndexError(error)) {
       throw error;
     }
     
@@ -74,6 +74,32 @@ export async function safeFirestoreOperation<T>(
           break;
         case 'unavailable':
           toast.error('The service is currently unavailable. Please try again later');
+          break;
+        case 'failed-precondition':
+          // Check if it's a missing index error
+          if (isMissingIndexError(error)) {
+            const indexUrl = extractIndexUrl(error);
+            if (indexUrl) {
+              toast.error(
+                <div>
+                  Missing Firestore index. 
+                  <a 
+                    href={indexUrl}
+                    target="_blank" 
+                    rel="noopener noreferrer"
+                    className="ml-2 underline text-blue-600"
+                  >
+                    Create it here
+                  </a>
+                </div>,
+                { duration: 10000 }
+              );
+            } else {
+              toast.error('This query requires a Firestore index. Please check the console for details.');
+            }
+          } else {
+            toast.error(errorMessage);
+          }
           break;
         default:
           toast.error(errorMessage);

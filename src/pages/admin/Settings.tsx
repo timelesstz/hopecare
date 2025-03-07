@@ -138,107 +138,123 @@ const SettingsPage: React.FC = () => {
       setLoading(true);
       setError(null);
 
-      // Check if settings collection exists
-      try {
-        const settingsQuery = query(collection(db, 'settings'), where('id', '==', 'system_settings'));
-        
-        try {
+      const result = await safeFirestoreOperation(
+        async () => {
+          const settingsQuery = query(collection(db, 'settings'), where('id', '==', 'system_settings'));
           const settingsSnapshot = await getDocs(settingsQuery);
           
           if (settingsSnapshot.empty) {
-            // Create default settings if none exist
-            const defaultSettings: SystemSettings = {
-              siteName: 'HopeCare',
-              siteDescription: 'Empowering communities through hope and care',
-              contactEmail: 'contact@hopecare.org',
-              supportEmail: 'support@hopecare.org',
-              logoUrl: '/logo.png',
-              primaryColor: '#e11d48',
-              secondaryColor: '#4f46e5',
-              enableDonations: true,
-              enableVolunteers: true,
-              enableEvents: true,
-              enableBlog: true,
-              enableNotifications: true,
-              currencySymbol: '$',
-              defaultLanguage: 'en',
-              termsUrl: '/terms',
-              privacyUrl: '/privacy',
-              lastUpdated: serverTimestamp(),
-              updatedBy: user?.email || 'system'
+            // No settings found, return default settings
+            return { 
+              empty: true, 
+              defaultSettings: {
+                siteName: 'HopeCare',
+                siteDescription: 'Empowering communities through hope and care',
+                contactEmail: 'contact@hopecare.org',
+                supportEmail: 'support@hopecare.org',
+                logoUrl: '/logo.png',
+                primaryColor: '#e11d48',
+                secondaryColor: '#4f46e5',
+                enableDonations: true,
+                enableVolunteers: true,
+                enableEvents: true,
+                enableBlog: true,
+                enableNotifications: true,
+                currencySymbol: '$',
+                defaultLanguage: 'en',
+                termsUrl: '/terms',
+                privacyUrl: '/privacy',
+                lastUpdated: serverTimestamp(),
+                updatedBy: user?.email || 'system'
+              }
             };
-            
-            setSettings(defaultSettings);
-            
-            // Inform user that we're using default settings
-            toast.info('Using default settings. Save to create settings in the database.');
-          } else {
-            try {
-              const data = settingsSnapshot.docs[0].data();
-              setSettings(data as SystemSettings);
-            } catch (dataError) {
-              logFirestoreError(dataError, 'settings-data-processing');
-              throw dataError;
-            }
           }
-        } catch (queryError) {
-          logFirestoreError(queryError, 'settings-query-execution');
-          throw queryError;
-        }
-      } catch (err) {
-        logFirestoreError(err, 'settings-collection-access');
-        
-        // Check if it's a "collection not found" error
-        if (isMissingCollectionError(err)) {
-          setError('Failed to load settings. The settings collection might not exist.');
           
-          // Create a button to redirect to dashboard to create the collection
-          toast.error(
-            <div>
-              Settings collection might not exist. 
-              <button 
-                onClick={() => window.location.href = '/admin/dashboard'} 
-                className="ml-2 underline text-blue-600"
-              >
-                Go to Dashboard
-              </button>
-            </div>,
-            { duration: 5000 }
-          );
-        } else {
-          // For other errors
-          setError(`Failed to load settings: ${err instanceof Error ? err.message : 'Unknown error'}`);
-          toast.error('Failed to load settings. Please try again later.');
-        }
-        
-        // Use default settings
-        const defaultSettings: SystemSettings = {
-          siteName: 'HopeCare',
-          siteDescription: 'Empowering communities through hope and care',
-          contactEmail: 'contact@hopecare.org',
-          supportEmail: 'support@hopecare.org',
-          logoUrl: '/logo.png',
-          primaryColor: '#e11d48',
-          secondaryColor: '#4f46e5',
-          enableDonations: true,
-          enableVolunteers: true,
-          enableEvents: true,
-          enableBlog: true,
-          enableNotifications: true,
-          currencySymbol: '$',
-          defaultLanguage: 'en',
-          termsUrl: '/terms',
-          privacyUrl: '/privacy',
-          lastUpdated: serverTimestamp(),
-          updatedBy: user?.email || 'system'
-        };
-        
-        setSettings(defaultSettings);
+          // Settings found, return the data
+          return { 
+            empty: false, 
+            data: settingsSnapshot.docs[0].data() as SystemSettings 
+          };
+        },
+        'Failed to load settings. Please try again later.',
+        'settings-fetch'
+      );
+      
+      if (!result) {
+        // The operation failed and error was already handled by safeFirestoreOperation
+        setError('Failed to load settings');
+        return;
+      }
+      
+      if (result.empty) {
+        setSettings(result.defaultSettings);
+        // Inform user that we're using default settings
+        toast.info('Using default settings. Save to create settings in the database.');
+      } else {
+        setSettings(result.data);
       }
     } catch (err) {
+      // This catch is for any errors not caught by safeFirestoreOperation
       logFirestoreError(err, 'settings-fetch-outer');
+      
+      // Special handling for missing collection errors
+      if (isMissingCollectionError(err)) {
+        setError('Failed to load settings. The settings collection might not exist.');
+        
+        // Create a button to redirect to dashboard to create the collection
+        toast.error(
+          <div>
+            Settings collection might not exist. 
+            <button 
+              onClick={() => window.location.href = '/admin/dashboard'} 
+              className="ml-2 underline text-blue-600"
+            >
+              Go to Dashboard
+            </button>
+          </div>,
+          { duration: 5000 }
+        );
+        return;
+      }
+      
+      // Special handling for missing index errors
+      if (err instanceof Error && err.message.includes('requires an index')) {
+        const indexUrl = err.message.match(/https:\/\/console\.firebase\.google\.com[^\s]*/)?.[0];
+        if (indexUrl) {
+          setError(
+            <>
+              This query requires a Firestore index. Please{' '}
+              <a 
+                href={indexUrl} 
+                target="_blank" 
+                rel="noopener noreferrer"
+                className="text-blue-600 underline"
+              >
+                click here
+              </a>{' '}
+              to create it.
+            </>
+          );
+          toast.error(
+            <div>
+              Missing Firestore index. 
+              <a 
+                href={indexUrl}
+                target="_blank" 
+                rel="noopener noreferrer"
+                className="ml-2 underline text-blue-600"
+              >
+                Create it here
+              </a>
+            </div>,
+            { duration: 10000 }
+          );
+          return;
+        }
+      }
+      
       setError('An unexpected error occurred while loading settings');
-      toast.error('An unexpected error occurred. Using default settings.');
+      toast.error('An unexpected error occurred. Please try again later.');
       
       // Fallback to default settings
       setSettings(defaultSettings);

@@ -93,22 +93,19 @@ const AdminsPage: React.FC = () => {
       setError(null);
       setNoAdminsFound(false);
 
-      try {
-        const adminsQuery = query(
-          collection(db, 'users'),
-          where('role', '==', 'ADMIN'),
-          orderBy('created_at', 'desc')
-        );
-        
-        try {
+      const result = await safeFirestoreOperation(
+        async () => {
+          const adminsQuery = query(
+            collection(db, 'users'),
+            where('role', '==', 'ADMIN'),
+            orderBy('created_at', 'desc')
+          );
+          
           const adminsSnapshot = await getDocs(adminsQuery);
           
           if (adminsSnapshot.empty) {
             // No admins found, but the query worked
-            setAdmins([]);
-            setError('No admin users found. Add your first admin user to get started.');
-            setNoAdminsFound(true);
-            return;
+            return { empty: true, docs: [] };
           }
           
           const adminsList: Admin[] = [];
@@ -132,29 +129,68 @@ const AdminsPage: React.FC = () => {
             }
           });
           
-          setAdmins(adminsList);
-        } catch (queryError) {
-          logFirestoreError(queryError, 'admins-query-execution');
-          throw queryError;
-        }
-      } catch (err) {
-        logFirestoreError(err, 'admins-collection-access');
-        
-        // Check if it's a permission error
-        if (isPermissionError(err)) {
-          setError('You do not have permission to access admin users');
-          toast.error('You do not have permission to access admin users');
-        } else if (err instanceof Error && err.message.includes('collection not found')) {
-          setError('Users collection does not exist. Please check your database setup.');
-          toast.error('Users collection not found. Please contact system administrator.');
-        } else {
-          setError(`Failed to fetch admin users: ${err instanceof Error ? err.message : 'Unknown error'}`);
-          toast.error('Failed to fetch admin users. Please try again later.');
+          return { empty: false, docs: adminsList };
+        },
+        'Failed to fetch admin users. Please try again later.',
+        'admins-fetch'
+      );
+      
+      if (!result) {
+        // The operation failed and error was already handled by safeFirestoreOperation
+        setError('Failed to fetch admin users');
+        return;
+      }
+      
+      if (result.empty) {
+        setAdmins([]);
+        setError('No admin users found. Add your first admin user to get started.');
+        setNoAdminsFound(true);
+        return;
+      }
+      
+      setAdmins(result.docs);
+    } catch (err) {
+      // This catch is for any errors not caught by safeFirestoreOperation
+      logFirestoreError(err, 'admins-fetch-outer');
+      
+      // Special handling for missing index errors
+      if (err instanceof Error && err.message.includes('requires an index')) {
+        const indexUrl = err.message.match(/https:\/\/console\.firebase\.google\.com[^\s]*/)?.[0];
+        if (indexUrl) {
+          setError(
+            <>
+              This query requires a Firestore index. Please{' '}
+              <a 
+                href={indexUrl} 
+                target="_blank" 
+                rel="noopener noreferrer"
+                className="text-blue-600 underline"
+              >
+                click here
+              </a>{' '}
+              to create it.
+            </>
+          );
+          toast.error(
+            <div>
+              Missing Firestore index. 
+              <a 
+                href={indexUrl}
+                target="_blank" 
+                rel="noopener noreferrer"
+                className="ml-2 underline text-blue-600"
+              >
+                Create it here
+              </a>
+            </div>,
+            { duration: 10000 }
+          );
+          return;
         }
       }
-    } catch (err) {
-      logFirestoreError(err, 'admins-fetch-outer');
+      
       setError('An unexpected error occurred while fetching admin users');
+      toast.error('An unexpected error occurred. Please try again later.');
     } finally {
       setLoading(false);
     }

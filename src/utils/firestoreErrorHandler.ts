@@ -134,11 +134,46 @@ export const isMissingCollectionError = (error: unknown): boolean => {
   return false;
 };
 
+/**
+ * Check if a Firestore error is due to a missing index
+ * @param error The error to check
+ * @returns True if the error is due to a missing index
+ */
+export const isMissingIndexError = (error: unknown): boolean => {
+  if (error instanceof FirebaseError) {
+    return error.code === 'failed-precondition' && 
+           error.message.includes('requires an index');
+  }
+  
+  if (error instanceof Error) {
+    return error.message.includes('requires an index');
+  }
+  
+  return false;
+};
+
+/**
+ * Extract the index creation URL from a Firestore error message
+ * @param error The error to extract the URL from
+ * @returns The URL to create the index, or null if not found
+ */
+export const extractIndexUrl = (error: unknown): string | null => {
+  if (!isMissingIndexError(error)) {
+    return null;
+  }
+  
+  const errorMessage = error instanceof Error ? error.message : String(error);
+  const match = errorMessage.match(/https:\/\/console\.firebase\.google\.com[^\s]*/);
+  return match ? match[0] : null;
+};
+
 export default {
   handleFirestoreError,
   logFirestoreError,
   isPermissionError,
   isNetworkError,
   isDocumentExistsError,
-  isMissingCollectionError
+  isMissingCollectionError,
+  isMissingIndexError,
+  extractIndexUrl
 };

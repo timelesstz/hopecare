@@ -99,22 +99,19 @@ const VolunteersPage: React.FC = () => {
       setError(null);
       setNoVolunteersFound(false);
 
-      try {
-        const volunteersQuery = query(
-          collection(db, 'users'),
-          where('role', '==', 'VOLUNTEER'),
-          orderBy('created_at', 'desc')
-        );
-        
-        try {
+      const result = await safeFirestoreOperation(
+        async () => {
+          const volunteersQuery = query(
+            collection(db, 'users'),
+            where('role', '==', 'VOLUNTEER'),
+            orderBy('created_at', 'desc')
+          );
+          
           const volunteersSnapshot = await getDocs(volunteersQuery);
           
           if (volunteersSnapshot.empty) {
             // No volunteers found, but the query worked
-            setVolunteers([]);
-            setError('No volunteer users found. Volunteers can sign up through the volunteer page.');
-            setNoVolunteersFound(true);
-            return;
+            return { empty: true, docs: [] };
           }
           
           const volunteersList: Volunteer[] = [];
@@ -144,29 +141,68 @@ const VolunteersPage: React.FC = () => {
             }
           });
           
-          setVolunteers(volunteersList);
-        } catch (queryError) {
-          logFirestoreError(queryError, 'volunteers-query-execution');
-          throw queryError;
-        }
-      } catch (err) {
-        logFirestoreError(err, 'volunteers-collection-access');
-        
-        // Check if it's a permission error
-        if (isPermissionError(err)) {
-          setError('You do not have permission to access volunteer users');
-          toast.error('You do not have permission to access volunteer users');
-        } else if (err instanceof Error && err.message.includes('collection not found')) {
-          setError('Users collection does not exist. Please check your database setup.');
-          toast.error('Users collection not found. Please contact system administrator.');
-        } else {
-          setError(`Failed to fetch volunteer users: ${err instanceof Error ? err.message : 'Unknown error'}`);
-          toast.error('Failed to fetch volunteer users. Please try again later.');
+          return { empty: false, docs: volunteersList };
+        },
+        'Failed to fetch volunteer users. Please try again later.',
+        'volunteers-fetch'
+      );
+      
+      if (!result) {
+        // The operation failed and error was already handled by safeFirestoreOperation
+        setError('Failed to fetch volunteer users');
+        return;
+      }
+      
+      if (result.empty) {
+        setVolunteers([]);
+        setError('No volunteer users found. Volunteers can sign up through the volunteer page.');
+        setNoVolunteersFound(true);
+        return;
+      }
+      
+      setVolunteers(result.docs);
+    } catch (err) {
+      // This catch is for any errors not caught by safeFirestoreOperation
+      logFirestoreError(err, 'volunteers-fetch-outer');
+      
+      // Special handling for missing index errors
+      if (err instanceof Error && err.message.includes('requires an index')) {
+        const indexUrl = err.message.match(/https:\/\/console\.firebase\.google\.com[^\s]*/)?.[0];
+        if (indexUrl) {
+          setError(
+            <>
+              This query requires a Firestore index. Please{' '}
+              <a 
+                href={indexUrl} 
+                target="_blank" 
+                rel="noopener noreferrer"
+                className="text-blue-600 underline"
+              >
+                click here
+              </a>{' '}
+              to create it.
+            </>
+          );
+          toast.error(
+            <div>
+              Missing Firestore index. 
+              <a 
+                href={indexUrl}
+                target="_blank" 
+                rel="noopener noreferrer"
+                className="ml-2 underline text-blue-600"
+              >
+                Create it here
+              </a>
+            </div>,
+            { duration: 10000 }
+          );
+          return;
         }
       }
-    } catch (err) {
-      logFirestoreError(err, 'volunteers-fetch-outer');
+      
       setError('An unexpected error occurred while fetching volunteer users');
+      toast.error('An unexpected error occurred. Please try again later.');
     } finally {
       setLoading(false);
     }

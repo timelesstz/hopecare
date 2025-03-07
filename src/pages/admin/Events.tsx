@@ -72,14 +72,13 @@ const EventsPage: React.FC = () => {
       setLoading(true);
       setError(null);
 
-      // Check if events collection exists
-      try {
-        const eventsQuery = query(
-          collection(db, 'events'),
-          orderBy('created_at', 'desc')
-        );
-        
-        try {
+      const result = await safeFirestoreOperation(
+        async () => {
+          const eventsQuery = query(
+            collection(db, 'events'),
+            orderBy('created_at', 'desc')
+          );
+          
           const eventsSnapshot = await getDocs(eventsQuery);
           
           const eventsList: Event[] = [];
@@ -107,40 +106,81 @@ const EventsPage: React.FC = () => {
             }
           });
           
-          setEvents(eventsList);
-        } catch (queryError) {
-          logFirestoreError(queryError, 'events-query-execution');
-          throw queryError; // Re-throw to be caught by the outer catch
-        }
-      } catch (err) {
-        logFirestoreError(err, 'events-collection-access');
+          return eventsList;
+        },
+        'Failed to fetch events. Please try again later.',
+        'events-fetch'
+      );
+      
+      if (!result) {
+        // The operation failed and error was already handled by safeFirestoreOperation
+        setError('Failed to fetch events');
+        return;
+      }
+      
+      setEvents(result);
+    } catch (err) {
+      // This catch is for any errors not caught by safeFirestoreOperation
+      logFirestoreError(err, 'events-fetch-outer');
+      
+      // Special handling for missing collection errors
+      if (isMissingCollectionError(err)) {
+        setError('Failed to fetch events. The events collection might not exist.');
         
-        // Check if it's a "collection not found" error
-        if (isMissingCollectionError(err)) {
-          setError('Failed to fetch events. The events collection might not exist.');
-          
-          // Create a button to redirect to dashboard to create the collection
+        // Create a button to redirect to dashboard to create the collection
+        toast.error(
+          <div>
+            Events collection might not exist. 
+            <button 
+              onClick={() => window.location.href = '/admin/dashboard'} 
+              className="ml-2 underline text-blue-600"
+            >
+              Go to Dashboard
+            </button>
+          </div>,
+          { duration: 5000 }
+        );
+        return;
+      }
+      
+      // Special handling for missing index errors
+      if (err instanceof Error && err.message.includes('requires an index')) {
+        const indexUrl = err.message.match(/https:\/\/console\.firebase\.google\.com[^\s]*/)?.[0];
+        if (indexUrl) {
+          setError(
+            <>
+              This query requires a Firestore index. Please{' '}
+              <a 
+                href={indexUrl} 
+                target="_blank" 
+                rel="noopener noreferrer"
+                className="text-blue-600 underline"
+              >
+                click here
+              </a>{' '}
+              to create it.
+            </>
+          );
           toast.error(
             <div>
-              Events collection might not exist. 
-              <button 
-                onClick={() => window.location.href = '/admin/dashboard'} 
+              Missing Firestore index. 
+              <a 
+                href={indexUrl}
+                target="_blank" 
+                rel="noopener noreferrer"
                 className="ml-2 underline text-blue-600"
               >
-                Go to Dashboard
-              </button>
+                Create it here
+              </a>
             </div>,
-            { duration: 5000 }
+            { duration: 10000 }
           );
-        } else {
-          // For other errors
-          setError(`Failed to fetch events: ${err instanceof Error ? err.message : 'Unknown error'}`);
-          toast.error('Failed to fetch events. Please try again later.');
+          return;
         }
       }
-    } catch (err) {
-      logFirestoreError(err, 'events-fetch-outer');
+      
       setError('An unexpected error occurred while fetching events');
+      toast.error('An unexpected error occurred. Please try again later.');
     } finally {
       setLoading(false);
     }
