@@ -1,12 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { Save, X } from 'lucide-react';
-// Supabase client import removed - using Firebase instead
 import { db, auth } from '../../lib/firebase';
 import { useFirebaseAuth } from '../../context/FirebaseAuthContext';
-import { Database } from '../../types/supabase';
+import { collection, query, where, getDocs, addDoc, deleteDoc, doc, updateDoc, serverTimestamp } from 'firebase/firestore';
 
-type VolunteerAvailability = Database['public']['Tables']['volunteer_availability']['Row'];
-
+// Define types without Supabase dependency
 interface TimeSlot {
   id: string;
   day: string;
@@ -36,24 +34,23 @@ const VolunteerAvailabilityComponent: React.FC = () => {
   }, [user]);
 
   const loadAvailability = async () => {
-    if (!user?.id) return;
+    if (!user?.uid) return;
 
     try {
       setIsLoading(true);
-      const { data, error } = await supabase
-        .from('volunteer_availability')
-        .select('*')
-        .eq('volunteer_id', user.id);
-
-      if (error) throw error;
-
-      if (data) {
-        const formattedSlots: TimeSlot[] = data.map(slot => ({
-          id: slot.id,
-          day: slot.day,
-          startTime: slot.start_time,
-          endTime: slot.end_time,
-          isRecurring: slot.is_recurring
+      
+      // Query Firestore for volunteer availability
+      const availabilityRef = collection(db, 'volunteer_availability');
+      const q = query(availabilityRef, where('volunteer_id', '==', user.uid));
+      const querySnapshot = await getDocs(q);
+      
+      if (!querySnapshot.empty) {
+        const formattedSlots: TimeSlot[] = querySnapshot.docs.map(doc => ({
+          id: doc.id,
+          day: doc.data().day,
+          startTime: doc.data().start_time,
+          endTime: doc.data().end_time,
+          isRecurring: doc.data().is_recurring
         }));
         setTimeSlots(formattedSlots);
       }
@@ -86,7 +83,7 @@ const VolunteerAvailabilityComponent: React.FC = () => {
   };
 
   const saveAvailability = async () => {
-    if (!user?.id) return;
+    if (!user?.uid) return;
 
     try {
       setIsLoading(true);
@@ -99,25 +96,30 @@ const VolunteerAvailabilityComponent: React.FC = () => {
         }
       }
 
-      // Delete existing availability
-      await supabase
-        .from('volunteer_availability')
-        .delete()
-        .eq('volunteer_id', user.id);
-
-      // Insert new availability
-      const { error } = await supabase
-        .from('volunteer_availability')
-        .insert(timeSlots.map(slot => ({
-          volunteer_id: user.id,
+      // Delete existing availability records
+      const availabilityRef = collection(db, 'volunteer_availability');
+      const q = query(availabilityRef, where('volunteer_id', '==', user.uid));
+      const querySnapshot = await getDocs(q);
+      
+      // Delete existing records
+      const deletePromises = querySnapshot.docs.map(doc => deleteDoc(doc.ref));
+      await Promise.all(deletePromises);
+      
+      // Add new availability records
+      const addPromises = timeSlots.map(slot => 
+        addDoc(collection(db, 'volunteer_availability'), {
+          volunteer_id: user.uid,
           day: slot.day,
           start_time: slot.startTime,
           end_time: slot.endTime,
-          is_recurring: slot.isRecurring
-        })));
-
-      if (error) throw error;
-
+          is_recurring: slot.isRecurring,
+          created_at: serverTimestamp(),
+          updated_at: serverTimestamp()
+        })
+      );
+      
+      await Promise.all(addPromises);
+      
       setIsEditing(false);
     } catch (err: any) {
       setError(err.message);

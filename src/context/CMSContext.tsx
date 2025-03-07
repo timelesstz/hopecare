@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, useCallback } from 'react';
 import { CMSProject, CMSCategory } from '../types/cms';
-import { supabase } from '../lib/supabaseClient';
+import { db } from '../lib/firebase';
+import { collection, getDocs, addDoc, updateDoc, deleteDoc, doc, query, orderBy, serverTimestamp } from 'firebase/firestore';
 
 interface CMSContextType {
   projects: CMSProject[];
@@ -28,13 +29,17 @@ export const CMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const refreshProjects = useCallback(async () => {
     try {
       setLoading(true);
-      const { data, error } = await supabase
-        .from('projects')
-        .select('*')
-        .order('created_at', { ascending: false });
-
-      if (error) throw error;
-      setProjects(data as CMSProject[]);
+      
+      const projectsRef = collection(db, 'projects');
+      const q = query(projectsRef, orderBy('created_at', 'desc'));
+      const querySnapshot = await getDocs(q);
+      
+      const projectsData = querySnapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      })) as CMSProject[];
+      
+      setProjects(projectsData);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to fetch projects');
     } finally {
@@ -45,13 +50,17 @@ export const CMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const refreshCategories = useCallback(async () => {
     try {
       setLoading(true);
-      const { data, error } = await supabase
-        .from('categories')
-        .select('*')
-        .order('name', { ascending: true });
-
-      if (error) throw error;
-      setCategories(data as CMSCategory[]);
+      
+      const categoriesRef = collection(db, 'categories');
+      const q = query(categoriesRef, orderBy('name'));
+      const querySnapshot = await getDocs(q);
+      
+      const categoriesData = querySnapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      })) as CMSCategory[];
+      
+      setCategories(categoriesData);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to fetch categories');
     } finally {
@@ -62,120 +71,177 @@ export const CMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const createProject = useCallback(async (project: Omit<CMSProject, 'id'>) => {
     try {
       setLoading(true);
-      const { data, error } = await supabase
-        .from('projects')
-        .insert([project])
-        .select()
-        .single();
-
-      if (error) throw error;
-      await refreshProjects();
-      return data as CMSProject;
+      
+      // Add timestamp fields
+      const projectWithTimestamps = {
+        ...project,
+        created_at: serverTimestamp(),
+        updated_at: serverTimestamp()
+      };
+      
+      // Add to Firestore
+      const docRef = await addDoc(collection(db, 'projects'), projectWithTimestamps);
+      
+      // Get the new project with ID
+      const newProject = {
+        id: docRef.id,
+        ...project,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
+      } as CMSProject;
+      
+      // Update local state
+      setProjects(prev => [newProject, ...prev]);
+      
+      return newProject;
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to create project');
       throw err;
     } finally {
       setLoading(false);
     }
-  }, [refreshProjects]);
+  }, []);
 
   const updateProject = useCallback(async (id: string, project: Partial<CMSProject>) => {
     try {
       setLoading(true);
-      const { data, error } = await supabase
-        .from('projects')
-        .update(project)
-        .eq('id', id)
-        .select()
-        .single();
-
-      if (error) throw error;
-      await refreshProjects();
-      return data as CMSProject;
+      
+      // Add updated timestamp
+      const projectWithTimestamp = {
+        ...project,
+        updated_at: serverTimestamp()
+      };
+      
+      // Update in Firestore
+      const projectRef = doc(db, 'projects', id);
+      await updateDoc(projectRef, projectWithTimestamp);
+      
+      // Get the updated project
+      const updatedProject = {
+        id,
+        ...projects.find(p => p.id === id),
+        ...project,
+        updated_at: new Date().toISOString()
+      } as CMSProject;
+      
+      // Update local state
+      setProjects(prev => prev.map(p => p.id === id ? updatedProject : p));
+      
+      return updatedProject;
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to update project');
       throw err;
     } finally {
       setLoading(false);
     }
-  }, [refreshProjects]);
+  }, [projects]);
 
   const deleteProject = useCallback(async (id: string) => {
     try {
       setLoading(true);
-      const { error } = await supabase
-        .from('projects')
-        .delete()
-        .eq('id', id);
-
-      if (error) throw error;
-      await refreshProjects();
+      
+      // Delete from Firestore
+      const projectRef = doc(db, 'projects', id);
+      await deleteDoc(projectRef);
+      
+      // Update local state
+      setProjects(prev => prev.filter(p => p.id !== id));
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to delete project');
       throw err;
     } finally {
       setLoading(false);
     }
-  }, [refreshProjects]);
+  }, []);
 
   const createCategory = useCallback(async (category: Omit<CMSCategory, 'id'>) => {
     try {
       setLoading(true);
-      const { data, error } = await supabase
-        .from('categories')
-        .insert([category])
-        .select()
-        .single();
-
-      if (error) throw error;
-      await refreshCategories();
-      return data as CMSCategory;
+      
+      // Add timestamp fields
+      const categoryWithTimestamps = {
+        ...category,
+        created_at: serverTimestamp(),
+        updated_at: serverTimestamp()
+      };
+      
+      // Add to Firestore
+      const docRef = await addDoc(collection(db, 'categories'), categoryWithTimestamps);
+      
+      // Get the new category with ID
+      const newCategory = {
+        id: docRef.id,
+        ...category,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
+      } as CMSCategory;
+      
+      // Update local state
+      setCategories(prev => [...prev, newCategory].sort((a, b) => a.name.localeCompare(b.name)));
+      
+      return newCategory;
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to create category');
       throw err;
     } finally {
       setLoading(false);
     }
-  }, [refreshCategories]);
+  }, []);
 
   const updateCategory = useCallback(async (id: string, category: Partial<CMSCategory>) => {
     try {
       setLoading(true);
-      const { data, error } = await supabase
-        .from('categories')
-        .update(category)
-        .eq('id', id)
-        .select()
-        .single();
-
-      if (error) throw error;
-      await refreshCategories();
-      return data as CMSCategory;
+      
+      // Add updated timestamp
+      const categoryWithTimestamp = {
+        ...category,
+        updated_at: serverTimestamp()
+      };
+      
+      // Update in Firestore
+      const categoryRef = doc(db, 'categories', id);
+      await updateDoc(categoryRef, categoryWithTimestamp);
+      
+      // Get the updated category
+      const updatedCategory = {
+        id,
+        ...categories.find(c => c.id === id),
+        ...category,
+        updated_at: new Date().toISOString()
+      } as CMSCategory;
+      
+      // Update local state
+      setCategories(prev => 
+        prev.map(c => c.id === id ? updatedCategory : c)
+          .sort((a, b) => a.name.localeCompare(b.name))
+      );
+      
+      return updatedCategory;
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to update category');
       throw err;
     } finally {
       setLoading(false);
     }
-  }, [refreshCategories]);
+  }, [categories]);
 
   const deleteCategory = useCallback(async (id: string) => {
     try {
       setLoading(true);
-      const { error } = await supabase
-        .from('categories')
-        .delete()
-        .eq('id', id);
-
-      if (error) throw error;
-      await refreshCategories();
+      
+      // Delete from Firestore
+      const categoryRef = doc(db, 'categories', id);
+      await deleteDoc(categoryRef);
+      
+      // Update local state
+      setCategories(prev => prev.filter(c => c.id !== id));
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to delete category');
       throw err;
     } finally {
       setLoading(false);
     }
-  }, [refreshCategories]);
+  }, []);
 
   return (
     <CMSContext.Provider
