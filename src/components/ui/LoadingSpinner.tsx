@@ -5,13 +5,15 @@ interface LoadingSpinnerProps {
   color?: 'primary' | 'secondary' | 'white';
   fullScreen?: boolean;
   message?: string;
+  className?: string;
 }
 
 const LoadingSpinner: React.FC<LoadingSpinnerProps> = ({
   size = 'medium',
   color = 'primary',
   fullScreen = false,
-  message
+  message,
+  className = ''
 }) => {
   // Size mappings
   const sizeMap = {
@@ -36,17 +38,18 @@ const LoadingSpinner: React.FC<LoadingSpinnerProps> = ({
   
   const containerClasses = fullScreen 
     ? 'fixed inset-0 flex items-center justify-center bg-gray-900 bg-opacity-50 z-50' 
-    : 'flex items-center justify-center';
+    : `flex items-center justify-center ${className}`;
   
   return (
-    <div className={containerClasses}>
+    <div className={containerClasses} role="status" aria-live="polite">
       <div className="flex flex-col items-center">
-        <div className={spinnerClasses}></div>
+        <div className={spinnerClasses} aria-hidden="true"></div>
         {message && (
           <p className={`mt-3 text-sm ${color === 'white' ? 'text-white' : 'text-gray-700'}`}>
             {message}
           </p>
         )}
+        <span className="sr-only">Loading...</span>
       </div>
     </div>
   );

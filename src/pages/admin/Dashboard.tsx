@@ -302,7 +302,7 @@ const AdminDashboard: React.FC = () => {
       if (collectionName === 'events') {
         const sampleEvent = {
           title: 'Welcome to HopeCare Events',
-          description: 'This is a sample event to help you get started with the events feature.',
+          description: 'This is a sample event to help you get started with the events feature. You can edit or delete this event, or create new ones from the Events page.',
           date: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000), // One week from now
           location: 'HopeCare Community Center',
           organizer: 'HopeCare Team',
@@ -311,13 +311,32 @@ const AdminDashboard: React.FC = () => {
           registered: 0,
           created_at: serverTimestamp(),
           updated_at: serverTimestamp(),
-          image_url: '',
-          tags: ['sample', 'welcome']
+          image_url: 'https://source.unsplash.com/random/800x600/?charity',
+          tags: ['sample', 'welcome', 'community']
         };
         
         try {
           docRef = await addDoc(collectionRef, sampleEvent);
           console.log(`Created ${collectionName} collection with a sample event, doc ID: ${docRef.id}`);
+          
+          // Add a second sample event
+          const secondEvent = {
+            title: 'Volunteer Orientation',
+            description: 'Join us for an orientation session for new volunteers. Learn about our mission, programs, and how you can make a difference.',
+            date: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000), // Two weeks from now
+            location: 'HopeCare Training Room',
+            organizer: 'Volunteer Coordinator',
+            status: 'upcoming',
+            capacity: 30,
+            registered: 5,
+            created_at: serverTimestamp(),
+            updated_at: serverTimestamp(),
+            image_url: 'https://source.unsplash.com/random/800x600/?volunteer',
+            tags: ['volunteer', 'orientation', 'training']
+          };
+          
+          await addDoc(collectionRef, secondEvent);
+          console.log(`Added second sample event to ${collectionName} collection`);
         } catch (addError) {
           console.error(`Error adding sample event document:`, addError);
           throw new Error(`Failed to add sample event document: ${addError instanceof Error ? addError.message : 'Unknown error'}`);

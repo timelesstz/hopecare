@@ -1,7 +1,9 @@
 import { useEffect, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 // Supabase client import removed - using Firebase instead
-import { db, auth } from '../lib/firebase';
+import { db, auth } from '../../lib/firebase';
+import { applyActionCode, getAuth } from 'firebase/auth';
+import { doc, updateDoc, collection, addDoc, serverTimestamp } from 'firebase/firestore';
 import { LoadingSpinner } from '../../components/ui/LoadingSpinner';
 import { useTheme } from '../../hooks/useTheme';
 
@@ -15,39 +17,35 @@ const VerifyEmail = () => {
   useEffect(() => {
     const verifyEmail = async () => {
       try {
-        // Get the token from URL
-        const token = searchParams.get('token');
-        if (!token) throw new Error('Verification token is missing');
+        // Get the action code (oobCode) from URL
+        const actionCode = searchParams.get('oobCode');
+        if (!actionCode) throw new Error('Verification code is missing');
 
-        // Verify the token with Supabase
-        const { error: verifyError } = await supabase.auth.verifyOtp({
-          token_hash: token,
-          type: 'email',
-        });
-
-        if (verifyError) throw verifyError;
-
-        // Update user status to ACTIVE
-        const { data: { user } } = await supabase.auth.getUser();
+        // Verify the email with Firebase
+        await applyActionCode(auth, actionCode);
+        
+        // Get the current user
+        const user = auth.currentUser;
         if (!user) throw new Error('User not found');
 
-        const { error: updateError } = await supabase
-          .from('users')
-          .update({ status: 'ACTIVE' })
-          .eq('id', user.id);
-
-        if (updateError) throw updateError;
+        // Update user status to ACTIVE in Firestore
+        const userRef = doc(db, 'users', user.uid);
+        await updateDoc(userRef, { 
+          status: 'ACTIVE',
+          email_verified: true,
+          updated_at: new Date().toISOString()
+        });
 
         // Log verification
-        await supabase
-          .from('audit_logs')
-          .insert([{
-            user_id: user.id,
-            action: 'EMAIL_VERIFIED',
-            details: {
-              timestamp: new Date().toISOString()
-            }
-          }]);
+        const auditLogsCollection = collection(db, 'audit_logs');
+        await addDoc(auditLogsCollection, {
+          user_id: user.uid,
+          action: 'EMAIL_VERIFIED',
+          details: {
+            timestamp: new Date().toISOString()
+          },
+          created_at: serverTimestamp()
+        });
 
         // Redirect to login
         setTimeout(() => {

@@ -1,5 +1,6 @@
 // Supabase client import removed - using Firebase instead
 import { db, auth } from '../lib/firebase';
+import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
 
 interface ErrorLog {
   type: string;
@@ -38,6 +39,8 @@ class ErrorLogger {
   }
 
   public async logError(type: string, info: ErrorInfo): Promise<void> {
+    const currentUser = auth.currentUser;
+    
     const errorLog: ErrorLog = {
       type,
       message: info.error.message,
@@ -49,6 +52,7 @@ class ErrorLogger {
         userAgent: navigator.userAgent,
         timestamp: info.timestamp || new Date().toISOString(),
       },
+      user_id: currentUser?.uid,
       severity: 'error',
       environment: this.environment,
       timestamp: new Date().toISOString(),
@@ -60,14 +64,12 @@ class ErrorLogger {
     }
 
     try {
-      // Store error in database
-      const { error } = await supabase
-        .from('error_logs')
-        .insert([errorLog]);
-
-      if (error) {
-        console.error('Failed to log error:', error);
-      }
+      // Store error in Firestore
+      const errorLogsCollection = collection(db, 'error_logs');
+      await addDoc(errorLogsCollection, {
+        ...errorLog,
+        created_at: serverTimestamp(),
+      });
 
       // If in production, send to external error tracking service
       if (this.environment === 'production') {
@@ -87,23 +89,25 @@ class ErrorLogger {
   }
 
   public async logWarning(message: string, metadata?: Record<string, any>): Promise<void> {
+    const currentUser = auth.currentUser;
+    
     const warningLog: ErrorLog = {
       type: 'warning',
       message,
       metadata,
+      user_id: currentUser?.uid,
       severity: 'warning',
       environment: this.environment,
       timestamp: new Date().toISOString(),
     };
 
     try {
-      const { error } = await supabase
-        .from('error_logs')
-        .insert([warningLog]);
-
-      if (error) {
-        console.error('Failed to log warning:', error);
-      }
+      // Store warning in Firestore
+      const errorLogsCollection = collection(db, 'error_logs');
+      await addDoc(errorLogsCollection, {
+        ...warningLog,
+        created_at: serverTimestamp(),
+      });
     } catch (err) {
       console.error('Warning logging failed:', err);
     }

@@ -1,20 +1,43 @@
 import React, { useEffect, useState } from 'react';
-import { supabase } from '../../lib/supabaseClient';
+import { db, auth } from '../../lib/firebase';
+import { 
+  collection, 
+  getDocs, 
+  addDoc, 
+  updateDoc, 
+  deleteDoc, 
+  doc, 
+  query, 
+  orderBy, 
+  where, 
+  serverTimestamp,
+  Timestamp
+} from 'firebase/firestore';
+import { 
+  createUserWithEmailAndPassword, 
+  sendPasswordResetEmail,
+  deleteUser,
+  getAuth,
+  updateEmail
+} from 'firebase/auth';
 import {
   UserPlusIcon,
   PencilIcon,
   TrashIcon,
   CheckCircleIcon,
-  XCircleIcon
+  XCircleIcon,
+  EnvelopeIcon
 } from '@heroicons/react/24/outline';
+import { toast } from 'react-hot-toast';
 
 interface User {
   id: string;
   email: string;
+  name: string;
   role: string;
-  created_at: string;
-  last_sign_in_at: string | null;
-  is_active: boolean;
+  created_at: Timestamp | string;
+  last_login?: Timestamp | string | null;
+  status: 'ACTIVE' | 'INACTIVE';
 }
 
 const UserManagement: React.FC = () => {
@@ -23,7 +46,16 @@ const UserManagement: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [showAddUser, setShowAddUser] = useState(false);
-  const [newUser, setNewUser] = useState({ email: '', role: 'user', password: '' });
+  const [newUser, setNewUser] = useState({ 
+    email: '', 
+    name: '',
+    role: 'DONOR', 
+    password: '',
+    confirmPassword: ''
+  });
+  const [editingUser, setEditingUser] = useState<User | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [validationErrors, setValidationErrors] = useState<Record<string, string>>({});
 
   useEffect(() => {
     fetchUsers();
@@ -32,100 +64,212 @@ const UserManagement: React.FC = () => {
   const fetchUsers = async () => {
     try {
       setLoading(true);
-      const { data: users, error } = await supabase
-        .from('users')
-        .select('*')
-        .order('created_at', { ascending: false });
-
-      if (error) throw error;
-      setUsers(users as User[]);
+      setError(null);
+      
+      const usersCollection = collection(db, 'users');
+      const q = query(usersCollection, orderBy('created_at', 'desc'));
+      const querySnapshot = await getDocs(q);
+      
+      const usersList: User[] = [];
+      querySnapshot.forEach((doc) => {
+        const userData = doc.data() as Omit<User, 'id'>;
+        usersList.push({ 
+          id: doc.id, 
+          ...userData,
+          // Ensure status is always defined
+          status: userData.status || 'ACTIVE'
+        });
+      });
+      
+      setUsers(usersList);
     } catch (err) {
+      console.error('Error fetching users:', err);
       setError(err instanceof Error ? err.message : 'Failed to fetch users');
+      toast.error('Failed to fetch users');
     } finally {
       setLoading(false);
     }
   };
 
+  const validateNewUser = () => {
+    const errors: Record<string, string> = {};
+    
+    if (!newUser.email) {
+      errors.email = 'Email is required';
+    } else if (!/\S+@\S+\.\S+/.test(newUser.email)) {
+      errors.email = 'Email is invalid';
+    }
+    
+    if (!newUser.name) {
+      errors.name = 'Name is required';
+    }
+    
+    if (!newUser.password) {
+      errors.password = 'Password is required';
+    } else if (newUser.password.length < 6) {
+      errors.password = 'Password must be at least 6 characters';
+    }
+    
+    if (newUser.password !== newUser.confirmPassword) {
+      errors.confirmPassword = 'Passwords do not match';
+    }
+    
+    setValidationErrors(errors);
+    return Object.keys(errors).length === 0;
+  };
+
   const handleAddUser = async (e: React.FormEvent) => {
     e.preventDefault();
+    
+    if (!validateNewUser()) {
+      return;
+    }
+    
     try {
-      const { data, error: signUpError } = await supabase.auth.signUp({
+      setIsSubmitting(true);
+      setError(null);
+      
+      // Create user in Firebase Authentication
+      const userCredential = await createUserWithEmailAndPassword(
+        auth,
+        newUser.email,
+        newUser.password
+      );
+
+      // Add user to Firestore
+      const userData = {
         email: newUser.email,
-        password: newUser.password,
+        name: newUser.name,
+        role: newUser.role,
+        status: 'ACTIVE',
+        created_at: serverTimestamp(),
+        last_login: null
+      };
+
+      await setDoc(doc(db, 'users', userCredential.user.uid), userData);
+
+      toast.success('User added successfully');
+      setShowAddUser(false);
+      setNewUser({ 
+        email: '', 
+        name: '',
+        role: 'DONOR', 
+        password: '',
+        confirmPassword: ''
+      });
+      await fetchUsers();
+    } catch (err) {
+      console.error('Error adding user:', err);
+      setError(err instanceof Error ? err.message : 'Failed to add user');
+      toast.error(err instanceof Error ? err.message : 'Failed to add user');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleUpdateUser = async (e: React.FormEvent) => {
+    e.preventDefault();
+    
+    if (!editingUser) return;
+    
+    try {
+      setIsSubmitting(true);
+      setError(null);
+      
+      const userRef = doc(db, 'users', editingUser.id);
+      await updateDoc(userRef, {
+        name: editingUser.name,
+        role: editingUser.role,
+        status: editingUser.status,
+        updated_at: serverTimestamp()
       });
 
-      if (signUpError) throw signUpError;
-
-      if (data.user) {
-        const { error: insertError } = await supabase
-          .from('users')
-          .insert([
-            {
-              id: data.user.id,
-              email: newUser.email,
-              role: newUser.role,
-              is_active: true,
-            },
-          ]);
-
-        if (insertError) throw insertError;
-
-        setShowAddUser(false);
-        setNewUser({ email: '', role: 'user', password: '' });
-        await fetchUsers();
-      }
+      toast.success('User updated successfully');
+      setEditingUser(null);
+      await fetchUsers();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to add user');
+      console.error('Error updating user:', err);
+      setError(err instanceof Error ? err.message : 'Failed to update user');
+      toast.error(err instanceof Error ? err.message : 'Failed to update user');
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
-  const handleUpdateUserRole = async (userId: string, newRole: string) => {
+  const handleSendPasswordReset = async (email: string) => {
     try {
-      const { error } = await supabase
-        .from('users')
-        .update({ role: newRole })
-        .eq('id', userId);
-
-      if (error) throw error;
-      await fetchUsers();
+      await sendPasswordResetEmail(auth, email);
+      toast.success('Password reset email sent');
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to update user role');
+      console.error('Error sending password reset:', err);
+      toast.error(err instanceof Error ? err.message : 'Failed to send password reset');
     }
   };
 
-  const handleToggleUserStatus = async (userId: string, currentStatus: boolean) => {
+  const handleToggleUserStatus = async (userId: string, currentStatus: 'ACTIVE' | 'INACTIVE') => {
     try {
-      const { error } = await supabase
-        .from('users')
-        .update({ is_active: !currentStatus })
-        .eq('id', userId);
-
-      if (error) throw error;
+      const newStatus = currentStatus === 'ACTIVE' ? 'INACTIVE' : 'ACTIVE';
+      const userRef = doc(db, 'users', userId);
+      await updateDoc(userRef, { 
+        status: newStatus,
+        updated_at: serverTimestamp()
+      });
+      
+      toast.success(`User ${newStatus === 'ACTIVE' ? 'activated' : 'deactivated'} successfully`);
       await fetchUsers();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to toggle user status');
+      console.error('Error toggling user status:', err);
+      toast.error(err instanceof Error ? err.message : 'Failed to update user status');
     }
   };
 
   const handleDeleteUser = async (userId: string) => {
-    if (!window.confirm('Are you sure you want to delete this user?')) return;
-
+    if (!confirm('Are you sure you want to delete this user? This action cannot be undone.')) {
+      return;
+    }
+    
     try {
-      const { error } = await supabase
-        .from('users')
-        .delete()
-        .eq('id', userId);
-
-      if (error) throw error;
+      // Delete from Firestore
+      const userRef = doc(db, 'users', userId);
+      await deleteDoc(userRef);
+      
+      // Note: Deleting the actual Firebase Auth user requires admin SDK
+      // This would typically be handled by a Cloud Function
+      
+      toast.success('User deleted successfully');
       await fetchUsers();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to delete user');
+      console.error('Error deleting user:', err);
+      toast.error(err instanceof Error ? err.message : 'Failed to delete user');
     }
   };
 
-  const filteredUsers = users.filter(user =>
-    user.email.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  const filteredUsers = users.filter(user => {
+    const searchLower = searchTerm.toLowerCase();
+    return (
+      user.email.toLowerCase().includes(searchLower) ||
+      user.name?.toLowerCase().includes(searchLower) ||
+      user.role.toLowerCase().includes(searchLower)
+    );
+  });
+
+  const formatDate = (timestamp: Timestamp | string | null | undefined) => {
+    if (!timestamp) return 'N/A';
+    
+    const date = timestamp instanceof Timestamp 
+      ? timestamp.toDate() 
+      : typeof timestamp === 'string' 
+        ? new Date(timestamp) 
+        : null;
+    
+    if (!date) return 'Invalid date';
+    
+    return date.toLocaleDateString('en-US', {
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric'
+    });
+  };
 
   if (loading) {
     return (
@@ -186,13 +330,16 @@ const UserManagement: React.FC = () => {
                   Email
                 </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Name
+                </th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                   Role
                 </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                   Status
                 </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Last Sign In
+                  Last Login
                 </th>
                 <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
                   Actions
@@ -205,43 +352,50 @@ const UserManagement: React.FC = () => {
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                     {user.email}
                   </td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                    {user.name}
+                  </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                     <select
                       value={user.role}
-                      onChange={(e) => handleUpdateUserRole(user.id, e.target.value)}
+                      onChange={(e) => setEditingUser({ ...user, role: e.target.value })}
                       className="rounded-md border-gray-300 text-sm focus:ring-rose-500 focus:border-rose-500"
                     >
-                      <option value="user">User</option>
-                      <option value="admin">Admin</option>
-                      <option value="moderator">Moderator</option>
+                      <option value="DONOR">DONOR</option>
+                      <option value="ADMIN">ADMIN</option>
+                      <option value="MODERATOR">MODERATOR</option>
                     </select>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm">
                     <button
-                      onClick={() => handleToggleUserStatus(user.id, user.is_active)}
+                      onClick={() => handleToggleUserStatus(user.id, user.status)}
                       className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium
-                        ${user.is_active
+                        ${user.status === 'ACTIVE'
                           ? 'bg-green-100 text-green-800'
                           : 'bg-red-100 text-red-800'
                         }`}
                     >
-                      {user.is_active ? (
+                      {user.status === 'ACTIVE' ? (
                         <CheckCircleIcon className="h-4 w-4 mr-1" />
                       ) : (
                         <XCircleIcon className="h-4 w-4 mr-1" />
                       )}
-                      {user.is_active ? 'Active' : 'Inactive'}
+                      {user.status === 'ACTIVE' ? 'Active' : 'Inactive'}
                     </button>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                    {user.last_sign_in_at
-                      ? new Date(user.last_sign_in_at).toLocaleDateString()
-                      : 'Never'}
+                    {formatDate(user.last_login)}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
                     <button
+                      onClick={() => setEditingUser(user)}
+                      className="text-rose-600 hover:text-rose-900 mr-4"
+                    >
+                      <PencilIcon className="h-5 w-5" />
+                    </button>
+                    <button
                       onClick={() => handleDeleteUser(user.id)}
-                      className="text-red-600 hover:text-red-900 ml-4"
+                      className="text-red-600 hover:text-red-900"
                     >
                       <TrashIcon className="h-5 w-5" />
                     </button>
@@ -273,6 +427,19 @@ const UserManagement: React.FC = () => {
                   />
                 </div>
                 <div>
+                  <label htmlFor="name" className="block text-sm font-medium text-gray-700">
+                    Name
+                  </label>
+                  <input
+                    type="text"
+                    id="name"
+                    value={newUser.name}
+                    onChange={(e) => setNewUser({ ...newUser, name: e.target.value })}
+                    className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:ring-rose-500 focus:border-rose-500"
+                    required
+                  />
+                </div>
+                <div>
                   <label htmlFor="password" className="block text-sm font-medium text-gray-700">
                     Password
                   </label>
@@ -281,6 +448,19 @@ const UserManagement: React.FC = () => {
                     id="password"
                     value={newUser.password}
                     onChange={(e) => setNewUser({ ...newUser, password: e.target.value })}
+                    className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:ring-rose-500 focus:border-rose-500"
+                    required
+                  />
+                </div>
+                <div>
+                  <label htmlFor="confirmPassword" className="block text-sm font-medium text-gray-700">
+                    Confirm Password
+                  </label>
+                  <input
+                    type="password"
+                    id="confirmPassword"
+                    value={newUser.confirmPassword}
+                    onChange={(e) => setNewUser({ ...newUser, confirmPassword: e.target.value })}
                     className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:ring-rose-500 focus:border-rose-500"
                     required
                   />
@@ -295,9 +475,9 @@ const UserManagement: React.FC = () => {
                     onChange={(e) => setNewUser({ ...newUser, role: e.target.value })}
                     className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:ring-rose-500 focus:border-rose-500"
                   >
-                    <option value="user">User</option>
-                    <option value="admin">Admin</option>
-                    <option value="moderator">Moderator</option>
+                    <option value="DONOR">DONOR</option>
+                    <option value="ADMIN">ADMIN</option>
+                    <option value="MODERATOR">MODERATOR</option>
                   </select>
                 </div>
               </div>
@@ -314,6 +494,75 @@ const UserManagement: React.FC = () => {
                   className="px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-rose-600 hover:bg-rose-700"
                 >
                   Add User
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {editingUser && (
+        <div className="fixed inset-0 bg-gray-500 bg-opacity-75 flex items-center justify-center">
+          <div className="bg-white rounded-lg p-6 max-w-md w-full">
+            <h2 className="text-lg font-medium text-gray-900 mb-4">Edit User</h2>
+            <form onSubmit={handleUpdateUser}>
+              <div className="space-y-4">
+                <div>
+                  <label htmlFor="name" className="block text-sm font-medium text-gray-700">
+                    Name
+                  </label>
+                  <input
+                    type="text"
+                    id="name"
+                    value={editingUser.name}
+                    onChange={(e) => setEditingUser({ ...editingUser, name: e.target.value })}
+                    className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:ring-rose-500 focus:border-rose-500"
+                    required
+                  />
+                </div>
+                <div>
+                  <label htmlFor="role" className="block text-sm font-medium text-gray-700">
+                    Role
+                  </label>
+                  <select
+                    id="role"
+                    value={editingUser.role}
+                    onChange={(e) => setEditingUser({ ...editingUser, role: e.target.value })}
+                    className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:ring-rose-500 focus:border-rose-500"
+                  >
+                    <option value="DONOR">DONOR</option>
+                    <option value="ADMIN">ADMIN</option>
+                    <option value="MODERATOR">MODERATOR</option>
+                  </select>
+                </div>
+                <div>
+                  <label htmlFor="status" className="block text-sm font-medium text-gray-700">
+                    Status
+                  </label>
+                  <select
+                    id="status"
+                    value={editingUser.status}
+                    onChange={(e) => setEditingUser({ ...editingUser, status: e.target.value as 'ACTIVE' | 'INACTIVE' })}
+                    className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:ring-rose-500 focus:border-rose-500"
+                  >
+                    <option value="ACTIVE">ACTIVE</option>
+                    <option value="INACTIVE">INACTIVE</option>
+                  </select>
+                </div>
+              </div>
+              <div className="mt-6 flex justify-end space-x-3">
+                <button
+                  type="button"
+                  onClick={() => setEditingUser(null)}
+                  className="px-4 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 hover:bg-gray-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-rose-600 hover:bg-rose-700"
+                >
+                  Update User
                 </button>
               </div>
             </form>

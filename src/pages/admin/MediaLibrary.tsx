@@ -1,6 +1,8 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import { useDropzone } from 'react-dropzone';
-import { supabase } from '../../lib/supabaseClient';
+import { storage, db } from '../../lib/firebase';
+import { ref, uploadBytes, getDownloadURL, deleteObject } from 'firebase/storage';
+import { collection, addDoc, getDocs, query, orderBy, deleteDoc, doc } from 'firebase/firestore';
 import { XMarkIcon, ArrowUpTrayIcon, ClipboardIcon } from '@heroicons/react/24/outline';
 
 interface MediaFile {
@@ -18,6 +20,27 @@ const MediaLibrary: React.FC = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [copied, setCopied] = useState<string | null>(null);
 
+  useEffect(() => {
+    fetchMediaFiles();
+  }, []);
+
+  const fetchMediaFiles = async () => {
+    try {
+      const mediaCollection = collection(db, 'media');
+      const q = query(mediaCollection, orderBy('created_at', 'desc'));
+      const querySnapshot = await getDocs(q);
+      
+      const files: MediaFile[] = [];
+      querySnapshot.forEach((doc) => {
+        files.push({ id: doc.id, ...doc.data() } as MediaFile);
+      });
+      
+      setMediaFiles(files);
+    } catch (error) {
+      console.error('Error fetching media files:', error);
+    }
+  };
+
   const onDrop = useCallback(async (acceptedFiles: File[]) => {
     setUploading(true);
     try {
@@ -26,23 +49,27 @@ const MediaLibrary: React.FC = () => {
         const fileName = `${Math.random().toString(36).substring(2)}.${fileExt}`;
         const filePath = `media/${fileName}`;
 
-        const { error: uploadError } = await supabase.storage
-          .from('public')
-          .upload(filePath, file);
+        // Upload to Firebase Storage
+        const storageRef = ref(storage, filePath);
+        await uploadBytes(storageRef, file);
+        
+        // Get download URL
+        const downloadURL = await getDownloadURL(storageRef);
 
-        if (uploadError) throw uploadError;
-
-        const { data: { publicUrl } } = supabase.storage
-          .from('public')
-          .getPublicUrl(filePath);
-
-        return {
-          id: fileName,
-          url: publicUrl,
+        // Save metadata to Firestore
+        const mediaData = {
+          url: downloadURL,
           name: file.name,
           size: file.size,
           type: file.type,
           created_at: new Date().toISOString(),
+        };
+        
+        const docRef = await addDoc(collection(db, 'media'), mediaData);
+        
+        return {
+          id: docRef.id,
+          ...mediaData
         };
       });
 
@@ -63,14 +90,16 @@ const MediaLibrary: React.FC = () => {
     },
   });
 
-  const handleDelete = async (fileId: string) => {
+  const handleDelete = async (fileId: string, fileName: string) => {
     if (window.confirm('Are you sure you want to delete this file?')) {
       try {
-        const { error } = await supabase.storage
-          .from('public')
-          .remove([`media/${fileId}`]);
-
-        if (error) throw error;
+        // Delete from Firebase Storage
+        // Extract the file path from the URL or use a stored reference
+        const fileRef = ref(storage, `media/${fileName}`);
+        await deleteObject(fileRef);
+        
+        // Delete from Firestore
+        await deleteDoc(doc(db, 'media', fileId));
 
         setMediaFiles((prev) => prev.filter((file) => file.id !== fileId));
       } catch (error) {
@@ -157,7 +186,7 @@ const MediaLibrary: React.FC = () => {
                   {file.name}
                 </h3>
                 <button
-                  onClick={() => handleDelete(file.id)}
+                  onClick={() => handleDelete(file.id, file.name)}
                   className="text-gray-400 hover:text-red-500"
                 >
                   <XMarkIcon className="h-5 w-5" />

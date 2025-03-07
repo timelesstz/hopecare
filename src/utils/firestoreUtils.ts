@@ -14,9 +14,10 @@ import {
   DocumentData,
   QueryConstraint,
   WhereFilterOp,
-  FirestoreError
+  setDoc
 } from 'firebase/firestore';
 import { db } from '../lib/firebase';
+import { handleFirestoreError, logFirestoreError } from './firestoreErrorHandler';
 
 /**
  * Utility functions to help with Firestore queries
@@ -32,35 +33,7 @@ interface QueryOptions {
 
 interface FirestoreResponse<T> {
   data: T | null;
-  error: Error | null;
-}
-
-/**
- * Handle Firestore errors with more specific error messages
- */
-function handleFirestoreError(error: unknown, operation: string): Error {
-  console.error(`Firestore ${operation} error:`, error);
-  
-  if (error instanceof FirestoreError) {
-    switch (error.code) {
-      case 'permission-denied':
-        return new Error(`Access denied: You don't have permission to ${operation}`);
-      case 'not-found':
-        return new Error(`Document not found`);
-      case 'already-exists':
-        return new Error(`Document already exists`);
-      case 'resource-exhausted':
-        return new Error(`Quota exceeded. Please try again later`);
-      case 'failed-precondition':
-        return new Error(`Operation failed: The system is not in a state required for this operation`);
-      case 'unavailable':
-        return new Error(`Service unavailable. Please try again later`);
-      default:
-        return new Error(`${operation} failed: ${error.message}`);
-    }
-  }
-  
-  return error instanceof Error ? error : new Error(`Unknown error during ${operation}`);
+  error: string | null;
 }
 
 /**
@@ -114,38 +87,107 @@ export async function getAll<T = DocumentData>(
     
     return { data, error: null };
   } catch (error) {
-    return { data: null, error: handleFirestoreError(error, 'query') };
+    logFirestoreError(error, `getAll:${collectionName}`);
+    return { data: null, error: handleFirestoreError(error) };
   }
 }
 
 /**
  * Get a single document by ID
+ * @param collectionName The collection to query
+ * @param id The document ID
+ * @returns The document data or error
  */
-export async function getById<T = DocumentData>(
-  collectionName: string, 
-  id: string
-): Promise<FirestoreResponse<T>> {
+export async function getById<T>(collectionName: string, id: string): Promise<FirestoreResponse<T>> {
   try {
     const docRef = doc(db, collectionName, id);
     const docSnap = await getDoc(docRef);
     
     if (docSnap.exists()) {
-      return { data: { id: docSnap.id, ...docSnap.data() } as T, error: null };
+      return { 
+        data: { id: docSnap.id, ...docSnap.data() } as T, 
+        error: null 
+      };
     } else {
-      return { data: null, error: new Error('Document not found') };
+      return { 
+        data: null, 
+        error: `Document not found in ${collectionName} with ID: ${id}` 
+      };
     }
   } catch (error) {
-    return { data: null, error: handleFirestoreError(error, 'get') };
+    logFirestoreError(error, `getById:${collectionName}`);
+    return { 
+      data: null, 
+      error: handleFirestoreError(error) 
+    };
   }
 }
 
 /**
- * Create a new document
+ * Query a collection with filters
+ * @param collectionName The collection to query
+ * @param options Query options (select, where, orderBy, limit)
+ * @returns Array of documents or error
  */
-export async function create<T = DocumentData>(
-  collectionName: string, 
-  data: any
-): Promise<FirestoreResponse<T>> {
+export async function query<T>(collectionName: string, options: QueryOptions = {}): Promise<FirestoreResponse<T[]>> {
+  try {
+    const constraints: QueryConstraint[] = [];
+    
+    // Add where clauses
+    if (options.where) {
+      options.where.forEach(([field, operator, value]) => {
+        constraints.push(where(field, operator, value));
+      });
+    }
+    
+    // Add orderBy clauses
+    if (options.orderBy) {
+      options.orderBy.forEach(([field, direction]) => {
+        constraints.push(orderBy(field, direction));
+      });
+    }
+    
+    // Add limit
+    if (options.limit) {
+      constraints.push(limit(options.limit));
+    }
+    
+    const q = query(collection(db, collectionName), ...constraints);
+    const querySnapshot = await getDocs(q);
+    
+    const results: T[] = [];
+    querySnapshot.forEach((doc) => {
+      // If select is specified, only include those fields
+      if (options.select && options.select.length > 0) {
+        const selectedData: Record<string, any> = { id: doc.id };
+        options.select.forEach(field => {
+          if (doc.data()[field] !== undefined) {
+            selectedData[field] = doc.data()[field];
+          }
+        });
+        results.push(selectedData as T);
+      } else {
+        results.push({ id: doc.id, ...doc.data() } as T);
+      }
+    });
+    
+    return { data: results, error: null };
+  } catch (error) {
+    logFirestoreError(error, `query:${collectionName}`);
+    return { 
+      data: null, 
+      error: handleFirestoreError(error) 
+    };
+  }
+}
+
+/**
+ * Insert a document into a collection
+ * @param collectionName The collection to insert into
+ * @param data The document data
+ * @returns The inserted document with ID or error
+ */
+export async function insert<T extends DocumentData>(collectionName: string, data: T): Promise<FirestoreResponse<T>> {
   try {
     // Add timestamps
     const dataWithTimestamps = {
@@ -154,28 +196,29 @@ export async function create<T = DocumentData>(
       updated_at: serverTimestamp()
     };
     
-    // If ID is provided, use it as the document ID
-    if (data.id) {
-      const docRef = doc(db, collectionName, data.id);
-      await updateDoc(docRef, dataWithTimestamps);
-      return { data: { id: data.id, ...dataWithTimestamps } as T, error: null };
-    } else {
-      const docRef = await addDoc(collection(db, collectionName), dataWithTimestamps);
-      return { data: { id: docRef.id, ...dataWithTimestamps } as T, error: null };
-    }
+    const docRef = await addDoc(collection(db, collectionName), dataWithTimestamps);
+    
+    return { 
+      data: { id: docRef.id, ...data } as T, 
+      error: null 
+    };
   } catch (error) {
-    return { data: null, error: handleFirestoreError(error, 'create') };
+    logFirestoreError(error, `insert:${collectionName}`);
+    return { 
+      data: null, 
+      error: handleFirestoreError(error) 
+    };
   }
 }
 
 /**
- * Update an existing document
+ * Update a document by ID
+ * @param collectionName The collection containing the document
+ * @param id The document ID
+ * @param data The data to update
+ * @returns The updated document or error
  */
-export async function update<T = DocumentData>(
-  collectionName: string, 
-  id: string, 
-  data: any
-): Promise<FirestoreResponse<T>> {
+export async function update<T extends DocumentData>(collectionName: string, id: string, data: Partial<T>): Promise<FirestoreResponse<T>> {
   try {
     const docRef = doc(db, collectionName, id);
     
@@ -186,25 +229,102 @@ export async function update<T = DocumentData>(
     };
     
     await updateDoc(docRef, dataWithTimestamp);
-    return { data: { id, ...dataWithTimestamp } as T, error: null };
+    
+    // Get the updated document
+    const updatedDoc = await getDoc(docRef);
+    
+    if (updatedDoc.exists()) {
+      return { 
+        data: { id: updatedDoc.id, ...updatedDoc.data() } as T, 
+        error: null 
+      };
+    } else {
+      return { 
+        data: null, 
+        error: `Failed to retrieve updated document in ${collectionName} with ID: ${id}` 
+      };
+    }
   } catch (error) {
-    return { data: null, error: handleFirestoreError(error, 'update') };
+    logFirestoreError(error, `update:${collectionName}`);
+    return { 
+      data: null, 
+      error: handleFirestoreError(error) 
+    };
   }
 }
 
 /**
- * Delete a document
+ * Delete a document by ID
+ * @param collectionName The collection containing the document
+ * @param id The document ID
+ * @returns Success status or error
  */
-export async function remove(
-  collectionName: string, 
-  id: string
-): Promise<FirestoreResponse<{ id: string }>> {
+export async function remove(collectionName: string, id: string): Promise<{ success: boolean; error: string | null }> {
   try {
     const docRef = doc(db, collectionName, id);
     await deleteDoc(docRef);
-    return { data: { id }, error: null };
+    
+    return { success: true, error: null };
   } catch (error) {
-    return { data: null, error: handleFirestoreError(error, 'delete') };
+    logFirestoreError(error, `remove:${collectionName}`);
+    return { 
+      success: false, 
+      error: handleFirestoreError(error) 
+    };
+  }
+}
+
+/**
+ * Upsert a document (update if exists, insert if not)
+ * @param collectionName The collection to upsert into
+ * @param id The document ID
+ * @param data The document data
+ * @returns The upserted document or error
+ */
+export async function upsert<T extends DocumentData>(collectionName: string, id: string, data: T): Promise<FirestoreResponse<T>> {
+  try {
+    const docRef = doc(db, collectionName, id);
+    const docSnap = await getDoc(docRef);
+    
+    if (docSnap.exists()) {
+      // Document exists, update it
+      const dataWithTimestamp = {
+        ...data,
+        updated_at: serverTimestamp()
+      };
+      
+      await updateDoc(docRef, dataWithTimestamp);
+    } else {
+      // Document doesn't exist, set it with ID
+      const dataWithTimestamps = {
+        ...data,
+        created_at: serverTimestamp(),
+        updated_at: serverTimestamp()
+      };
+      
+      await setDoc(docRef, dataWithTimestamps);
+    }
+    
+    // Get the updated document
+    const updatedDoc = await getDoc(docRef);
+    
+    if (updatedDoc.exists()) {
+      return { 
+        data: { id: updatedDoc.id, ...updatedDoc.data() } as T, 
+        error: null 
+      };
+    } else {
+      return { 
+        data: null, 
+        error: `Failed to retrieve upserted document in ${collectionName} with ID: ${id}` 
+      };
+    }
+  } catch (error) {
+    logFirestoreError(error, `upsert:${collectionName}`);
+    return { 
+      data: null, 
+      error: handleFirestoreError(error) 
+    };
   }
 }
 

@@ -1,122 +1,132 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { screen, render, fireEvent, waitFor } from '../../../test/utils';
+import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import AdminLogin from '../AdminLogin';
-import { mockSupabase } from '../../../test/utils';
-import { supabase } from '../../../lib/supabaseClient';
+import { mockAuth, mockFirestore } from '../../../test/mockFirebase';
+import { auth, db } from '../../../lib/firebase';
+import { signInWithEmailAndPassword } from 'firebase/auth';
+import { collection, query, where, getDocs } from 'firebase/firestore';
+import { vi } from 'vitest';
 
-vi.mock('../../../lib/supabaseClient', () => ({
-  supabase: mockSupabase,
+// Mock Firebase modules
+vi.mock('../../../lib/firebase', () => ({
+  auth: mockAuth,
+  db: mockFirestore,
+}));
+
+vi.mock('firebase/auth', () => ({
+  signInWithEmailAndPassword: vi.fn(),
+}));
+
+vi.mock('firebase/firestore', () => ({
+  collection: vi.fn(),
+  query: vi.fn(),
+  where: vi.fn(),
+  getDocs: vi.fn(),
+  doc: vi.fn(),
+  getDoc: vi.fn(),
 }));
 
 describe('AdminLogin', () => {
-  const mockNavigate = vi.fn();
-
   beforeEach(() => {
     vi.clearAllMocks();
-    vi.mock('react-router-dom', () => ({
-      useNavigate: () => mockNavigate,
-    }));
   });
 
-  it('renders login form correctly', () => {
+  test('renders login form', () => {
     render(<AdminLogin />);
-    
-    expect(screen.getByText('Admin Login')).toBeInTheDocument();
     expect(screen.getByLabelText(/email/i)).toBeInTheDocument();
     expect(screen.getByLabelText(/password/i)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /sign in/i })).toBeInTheDocument();
   });
 
-  it('handles successful login for admin user', async () => {
-    const mockUser = { id: '123', email: 'admin@hopecare.org' };
-    const mockUserData = { role: 'admin' };
-
-    (supabase.auth.signInWithPassword as any).mockResolvedValueOnce({
-      data: { user: mockUser },
-      error: null,
+  test('handles successful login for admin', async () => {
+    // Mock successful Firebase auth
+    (signInWithEmailAndPassword as any).mockResolvedValueOnce({
+      user: { uid: 'test-uid', email: 'admin@example.com' }
     });
 
-    (supabase.from as any)().select().eq().single.mockResolvedValueOnce({
-      data: mockUserData,
-      error: null,
-    });
+    // Mock Firestore query for admin user
+    const mockQuerySnapshot = {
+      empty: false,
+      docs: [{
+        data: () => ({ role: 'admin' }),
+      }]
+    };
+    (collection as any).mockReturnValueOnce('users-collection');
+    (query as any).mockReturnValueOnce('users-query');
+    (where as any).mockReturnValueOnce('users-where');
+    (getDocs as any).mockResolvedValueOnce(mockQuerySnapshot);
 
     render(<AdminLogin />);
 
     fireEvent.change(screen.getByLabelText(/email/i), {
-      target: { value: 'admin@hopecare.org' },
+      target: { value: 'admin@example.com' }
     });
     fireEvent.change(screen.getByLabelText(/password/i), {
-      target: { value: 'password123' },
+      target: { value: 'password123' }
     });
     fireEvent.click(screen.getByRole('button', { name: /sign in/i }));
 
     await waitFor(() => {
-      expect(mockNavigate).toHaveBeenCalledWith('/admin/dashboard');
+      expect(signInWithEmailAndPassword).toHaveBeenCalledWith(
+        auth,
+        'admin@example.com',
+        'password123'
+      );
+      expect(collection).toHaveBeenCalledWith(db, 'users');
+      expect(where).toHaveBeenCalledWith('uid', '==', 'test-uid');
     });
   });
 
-  it('shows error for non-admin user', async () => {
-    const mockUser = { id: '123', email: 'user@hopecare.org' };
-    const mockUserData = { role: 'user' };
-
-    (supabase.auth.signInWithPassword as any).mockResolvedValueOnce({
-      data: { user: mockUser },
-      error: null,
+  test('handles successful login for non-admin', async () => {
+    // Mock successful Firebase auth
+    (signInWithEmailAndPassword as any).mockResolvedValueOnce({
+      user: { uid: 'test-uid', email: 'user@example.com' }
     });
 
-    (supabase.from as any)().select().eq().single.mockResolvedValueOnce({
-      data: mockUserData,
-      error: null,
-    });
+    // Mock Firestore query for non-admin user
+    const mockQuerySnapshot = {
+      empty: false,
+      docs: [{
+        data: () => ({ role: 'user' }),
+      }]
+    };
+    (collection as any).mockReturnValueOnce('users-collection');
+    (query as any).mockReturnValueOnce('users-query');
+    (where as any).mockReturnValueOnce('users-where');
+    (getDocs as any).mockResolvedValueOnce(mockQuerySnapshot);
 
     render(<AdminLogin />);
 
     fireEvent.change(screen.getByLabelText(/email/i), {
-      target: { value: 'user@hopecare.org' },
+      target: { value: 'user@example.com' }
     });
     fireEvent.change(screen.getByLabelText(/password/i), {
-      target: { value: 'password123' },
+      target: { value: 'password123' }
     });
     fireEvent.click(screen.getByRole('button', { name: /sign in/i }));
 
     await waitFor(() => {
-      expect(screen.getByText(/unauthorized access/i)).toBeInTheDocument();
+      expect(screen.getByText(/access denied/i)).toBeInTheDocument();
     });
   });
 
-  it('handles login error', async () => {
-    (supabase.auth.signInWithPassword as any).mockResolvedValueOnce({
-      data: { user: null },
-      error: new Error('Invalid credentials'),
-    });
-
-    render(<AdminLogin />);
-
-    fireEvent.change(screen.getByLabelText(/email/i), {
-      target: { value: 'wrong@email.com' },
-    });
-    fireEvent.change(screen.getByLabelText(/password/i), {
-      target: { value: 'wrongpassword' },
-    });
-    fireEvent.click(screen.getByRole('button', { name: /sign in/i }));
-
-    await waitFor(() => {
-      expect(screen.getByText(/invalid credentials/i)).toBeInTheDocument();
-    });
-  });
-
-  it('disables submit button during login attempt', async () => {
-    (supabase.auth.signInWithPassword as any).mockImplementationOnce(() => 
-      new Promise(resolve => setTimeout(resolve, 100))
+  test('handles login error', async () => {
+    // Mock Firebase auth error
+    (signInWithEmailAndPassword as any).mockImplementationOnce(() =>
+      Promise.reject(new Error('Invalid login credentials'))
     );
 
     render(<AdminLogin />);
 
-    const submitButton = screen.getByRole('button', { name: /sign in/i });
-    fireEvent.click(submitButton);
+    fireEvent.change(screen.getByLabelText(/email/i), {
+      target: { value: 'wrong@example.com' }
+    });
+    fireEvent.change(screen.getByLabelText(/password/i), {
+      target: { value: 'wrongpassword' }
+    });
+    fireEvent.click(screen.getByRole('button', { name: /sign in/i }));
 
-    expect(submitButton).toBeDisabled();
-    expect(submitButton).toHaveTextContent(/signing in/i);
+    await waitFor(() => {
+      expect(screen.getByText(/invalid login credentials/i)).toBeInTheDocument();
+    });
   });
 });

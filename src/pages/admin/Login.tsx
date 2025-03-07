@@ -1,5 +1,5 @@
-import { useState, ChangeEvent, FormEvent, useRef } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useState, ChangeEvent, FormEvent, useRef, useEffect } from 'react';
+import { useNavigate, useLocation, Link } from 'react-router-dom';
 import { useFirebaseAuth } from '../../context/FirebaseAuthContext';
 import { useTheme } from '../../context/ThemeContext';
 import { Button, TextField, Paper, Typography, Box, Alert, InputAdornment, IconButton, Container, CircularProgress } from '@mui/material';
@@ -7,19 +7,58 @@ import { Lock, Mail, Eye, EyeOff, Shield, AlertCircle } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import Navbar from '../../components/Navbar';
 import Footer from '../../components/Footer';
+import { toast } from 'react-hot-toast';
 
 const AdminLogin = () => {
-  const { login, error: authError, loading } = useFirebaseAuth();
+  const { login, error: authError, loading, user } = useFirebaseAuth();
   const { mode } = useTheme();
   const navigate = useNavigate();
+  const location = useLocation();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [showPassword, setShowPassword] = useState(false);
   const [emailError, setEmailError] = useState<string | null>(null);
   const [passwordError, setPasswordError] = useState<string | null>(null);
+  const [loginAttempts, setLoginAttempts] = useState(0);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const formRef = useRef<HTMLFormElement>(null);
+
+  // Check if user is already logged in
+  useEffect(() => {
+    if (user) {
+      console.log('User already logged in:', user);
+      console.log('User role:', user.role);
+      
+      // Check if user is admin
+      const isAdmin = user.role === 'ADMIN' || 
+                     (user.customClaims && (
+                       user.customClaims.role === 'ADMIN' || 
+                       user.customClaims.isAdmin === true
+                     ));
+      
+      console.log('Is admin?', isAdmin);
+      
+      if (isAdmin) {
+        const from = location.state?.from?.pathname || '/admin/dashboard';
+        console.log('Redirecting admin to:', from);
+        navigate(from);
+      } else {
+        console.log('User is not an admin, showing error');
+        setError('You do not have admin privileges');
+        toast.error('You do not have admin privileges');
+      }
+    }
+  }, [user, navigate, location]);
+
+  // Set default values for admin login in development mode
+  useEffect(() => {
+    if (process.env.NODE_ENV === 'development') {
+      setEmail('admin@hopecaretz.org');
+      setPassword('Hope@admin2');
+    }
+  }, []);
 
   const validateEmail = (email: string): boolean => {
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -58,33 +97,48 @@ const AdminLogin = () => {
       return;
     }
 
+    console.log(`Attempting login (attempt #${loginAttempts + 1}) with:`, email);
+    setError(null);
+    setLoginAttempts(prev => prev + 1);
+    setIsSubmitting(true);
+    
     try {
       await login(email, password, 'ADMIN');
-      navigate('/admin/dashboard');
-    } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : 'Invalid login credentials';
-      setError(errorMessage);
       
-      // Shake animation trigger
-      if (formRef.current) {
-        formRef.current.classList.add('shake');
-        setTimeout(() => formRef.current?.classList.remove('shake'), 500);
+      // Note: Successful login will trigger the useEffect above
+      // which will redirect to the dashboard if the user is an admin
+    } catch (err) {
+      console.error('Login error:', err);
+      
+      // Handle specific error cases
+      if (err instanceof Error) {
+        if (err.message.includes('auth/user-not-found') || err.message.includes('auth/wrong-password')) {
+          setError('Invalid email or password');
+          toast.error('Invalid email or password');
+        } else if (err.message.includes('auth/too-many-requests')) {
+          setError('Too many failed login attempts. Please try again later.');
+          toast.error('Too many failed login attempts. Please try again later.');
+        } else {
+          setError(err.message);
+          toast.error(err.message);
+        }
+      } else {
+        setError('An unexpected error occurred. Please try again.');
+        toast.error('An unexpected error occurred. Please try again.');
       }
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
   const handleEmailChange = (e: ChangeEvent<HTMLInputElement>) => {
-    const value = e.target.value;
-    setEmail(value);
-    setError(null);
-    validateEmail(value);
+    setEmail(e.target.value);
+    if (emailError) validateEmail(e.target.value);
   };
 
   const handlePasswordChange = (e: ChangeEvent<HTMLInputElement>) => {
-    const value = e.target.value;
-    setPassword(value);
-    setError(null);
-    validatePassword(value);
+    setPassword(e.target.value);
+    if (passwordError) validatePassword(e.target.value);
   };
 
   const togglePasswordVisibility = () => {
@@ -92,75 +146,49 @@ const AdminLogin = () => {
   };
 
   return (
-    <div className="min-h-screen flex flex-col">
+    <div className={`min-h-screen flex flex-col ${mode === 'dark' ? 'bg-gray-900 text-white' : 'bg-gray-50'}`}>
       <Navbar />
-      <main className="flex-grow pt-16">
-        <Container maxWidth="xs" sx={{ py: 8 }}>
-          <Paper
-            component="form"
-            ref={formRef}
-            onSubmit={handleSubmit}
-            elevation={mode === 'dark' ? 2 : 1}
-            sx={{
-              p: 4,
-              width: '100%',
-              maxWidth: 400,
-              bgcolor: mode === 'dark' ? 'background.paper' : 'common.white',
-              borderRadius: 3,
-              position: 'relative',
-              overflow: 'hidden',
-              transform: 'scale(0.95)',
-              '&:hover': {
-                transform: 'scale(1)',
-                transition: 'transform 0.3s ease-in-out'
-              }
+      
+      <Container maxWidth="sm" className="flex-grow flex items-center justify-center py-12">
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.5 }}
+          className="w-full"
+        >
+          <Paper 
+            elevation={3} 
+            className={`p-8 rounded-lg ${mode === 'dark' ? 'bg-gray-800' : 'bg-white'}`}
+            sx={{ 
+              p: 4, 
+              borderRadius: 2,
+              bgcolor: mode === 'dark' ? 'rgba(30, 41, 59, 0.8)' : 'background.paper',
+              boxShadow: mode === 'dark' ? '0 4px 20px rgba(0,0,0,0.4)' : '0 4px 20px rgba(0,0,0,0.1)'
             }}
           >
-            <motion.div
-              initial={{ y: -20 }}
-              animate={{ y: 0 }}
-              transition={{ duration: 0.5, delay: 0.2 }}
-            >
-              <Box sx={{ textAlign: 'center', mb: 4 }}>
-                <Box
-                  sx={{
-                    display: 'flex',
-                    justifyContent: 'center',
-                    alignItems: 'center',
-                    mb: 2
-                  }}
-                >
-                  <motion.div
-                    initial={{ rotate: -180 }}
-                    animate={{ rotate: 0 }}
-                    transition={{ duration: 0.5, delay: 0.3 }}
-                  >
-                    <Shield className="h-12 w-12 text-rose-600" />
-                  </motion.div>
-                </Box>
-                <Typography
-                  variant="h5"
-                  component="h1"
-                  gutterBottom
-                  sx={{
-                    fontWeight: 600,
-                    color: mode === 'dark' ? 'common.white' : 'grey.900'
-                  }}
-                >
-                  Admin Portal
-                </Typography>
-                <Typography
-                  variant="body2"
-                  sx={{
-                    color: mode === 'dark' ? 'grey.400' : 'grey.600',
-                    maxWidth: 300,
-                    mx: 'auto'
-                  }}
-                >
-                  Secure access to HopeCare administrative dashboard
-                </Typography>
-              </Box>
-            </motion.div>
+            <Box sx={{ mb: 3, display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+              <Shield size={40} className="text-rose-600 mb-2" />
+              <Typography 
+                component="h1" 
+                variant="h5" 
+                sx={{ 
+                  fontWeight: 'bold',
+                  color: mode === 'dark' ? 'white' : 'text.primary'
+                }}
+              >
+                Admin Login
+              </Typography>
+              <Typography 
+                variant="body2" 
+                sx={{ 
+                  mt: 1, 
+                  textAlign: 'center',
+                  color: mode === 'dark' ? 'gray.400' : 'text.secondary'
+                }}
+              >
+                Sign in to access the HopeCare admin dashboard
+              </Typography>
+            </Box>
 
             <AnimatePresence>
               {(error || authError) && (
@@ -170,18 +198,10 @@ const AdminLogin = () => {
                   exit={{ opacity: 0, y: -10 }}
                   transition={{ duration: 0.3 }}
                 >
-                  <Alert
-                    severity="error"
-                    icon={<AlertCircle className="h-5 w-5" />}
-                    sx={{
-                      mb: 3,
-                      borderRadius: 2,
-                      bgcolor: 'error.light',
-                      color: 'error.dark',
-                      '& .MuiAlert-icon': {
-                        color: 'error.main'
-                      }
-                    }}
+                  <Alert 
+                    severity="error" 
+                    sx={{ mb: 3 }}
+                    icon={<AlertCircle size={20} />}
                   >
                     {error || authError}
                   </Alert>
@@ -189,7 +209,7 @@ const AdminLogin = () => {
               )}
             </AnimatePresence>
 
-            <form className="space-y-4">
+            <form ref={formRef} onSubmit={handleSubmit}>
               <TextField
                 margin="normal"
                 required
@@ -203,23 +223,32 @@ const AdminLogin = () => {
                 onChange={handleEmailChange}
                 error={!!emailError}
                 helperText={emailError}
-                disabled={loading}
                 InputProps={{
                   startAdornment: (
                     <InputAdornment position="start">
-                      <Mail className={`h-5 w-5 ${emailError ? 'text-error' : 'text-gray-400'}`} />
+                      <Mail size={20} className={mode === 'dark' ? 'text-gray-400' : 'text-gray-500'} />
                     </InputAdornment>
-                  )
+                  ),
                 }}
                 sx={{
+                  mb: 2,
                   '& .MuiOutlinedInput-root': {
-                    borderRadius: 2,
-                    '&:hover .MuiOutlinedInput-notchedOutline': {
-                      borderColor: mode === 'dark' ? 'grey.700' : 'grey.400'
-                    }
+                    '& fieldset': {
+                      borderColor: mode === 'dark' ? 'rgba(255, 255, 255, 0.15)' : 'rgba(0, 0, 0, 0.15)',
+                    },
+                    '&:hover fieldset': {
+                      borderColor: mode === 'dark' ? 'rgba(255, 255, 255, 0.25)' : 'rgba(0, 0, 0, 0.25)',
+                    },
+                  },
+                  '& .MuiInputLabel-root': {
+                    color: mode === 'dark' ? 'rgba(255, 255, 255, 0.7)' : undefined,
+                  },
+                  '& .MuiInputBase-input': {
+                    color: mode === 'dark' ? 'white' : undefined,
                   }
                 }}
               />
+              
               <TextField
                 margin="normal"
                 required
@@ -233,11 +262,10 @@ const AdminLogin = () => {
                 onChange={handlePasswordChange}
                 error={!!passwordError}
                 helperText={passwordError}
-                disabled={loading}
                 InputProps={{
                   startAdornment: (
                     <InputAdornment position="start">
-                      <Lock className={`h-5 w-5 ${passwordError ? 'text-error' : 'text-gray-400'}`} />
+                      <Lock size={20} className={mode === 'dark' ? 'text-gray-400' : 'text-gray-500'} />
                     </InputAdornment>
                   ),
                   endAdornment: (
@@ -247,58 +275,70 @@ const AdminLogin = () => {
                         onClick={togglePasswordVisibility}
                         edge="end"
                         size="small"
+                        sx={{ color: mode === 'dark' ? 'gray.400' : 'gray.500' }}
                       >
-                        {showPassword ? (
-                          <EyeOff className="h-5 w-5 text-gray-400" />
-                        ) : (
-                          <Eye className="h-5 w-5 text-gray-400" />
-                        )}
+                        {showPassword ? <EyeOff size={20} /> : <Eye size={20} />}
                       </IconButton>
                     </InputAdornment>
-                  )
+                  ),
                 }}
                 sx={{
+                  mb: 3,
                   '& .MuiOutlinedInput-root': {
-                    borderRadius: 2,
-                    '&:hover .MuiOutlinedInput-notchedOutline': {
-                      borderColor: mode === 'dark' ? 'grey.700' : 'grey.400'
-                    }
+                    '& fieldset': {
+                      borderColor: mode === 'dark' ? 'rgba(255, 255, 255, 0.15)' : 'rgba(0, 0, 0, 0.15)',
+                    },
+                    '&:hover fieldset': {
+                      borderColor: mode === 'dark' ? 'rgba(255, 255, 255, 0.25)' : 'rgba(0, 0, 0, 0.25)',
+                    },
+                  },
+                  '& .MuiInputLabel-root': {
+                    color: mode === 'dark' ? 'rgba(255, 255, 255, 0.7)' : undefined,
+                  },
+                  '& .MuiInputBase-input': {
+                    color: mode === 'dark' ? 'white' : undefined,
                   }
                 }}
               />
+              
+              <Box sx={{ display: 'flex', justifyContent: 'flex-end', mb: 2 }}>
+                <Link 
+                  to="/admin/forgot-password"
+                  className={`text-sm ${mode === 'dark' ? 'text-rose-400 hover:text-rose-300' : 'text-rose-600 hover:text-rose-800'}`}
+                >
+                  Forgot password?
+                </Link>
+              </Box>
+              
               <Button
                 type="submit"
                 fullWidth
                 variant="contained"
-                color="primary"
-                disabled={loading}
+                disabled={loading || isSubmitting}
                 sx={{
-                  mt: 3,
-                  mb: 2,
-                  bgcolor: 'rose.600',
+                  py: 1.5,
+                  bgcolor: 'rgb(225, 29, 72)',
                   '&:hover': {
-                    bgcolor: 'rose.700'
-                  }
+                    bgcolor: 'rgb(190, 18, 60)',
+                  },
+                  color: 'white',
+                  fontWeight: 'medium',
+                  textTransform: 'none',
+                  fontSize: '1rem',
+                  borderRadius: '0.5rem',
                 }}
               >
-                {loading ? <CircularProgress size={24} /> : 'Sign In'}
+                {(loading || isSubmitting) ? (
+                  <CircularProgress size={24} sx={{ color: 'white' }} />
+                ) : (
+                  'Sign In'
+                )}
               </Button>
-              
-              <Box sx={{ mt: 3, p: 2, bgcolor: 'background.paper', borderRadius: 1, border: '1px dashed', borderColor: 'divider' }}>
-                <Typography variant="subtitle2" color="primary" gutterBottom>
-                  Admin Test Credentials:
-                </Typography>
-                <Typography variant="body2" component="div" sx={{ mb: 1 }}>
-                  <strong>Email:</strong> admin@hopecare.org
-                </Typography>
-                <Typography variant="body2" component="div">
-                  <strong>Password:</strong> admin@2025
-                </Typography>
-              </Box>
             </form>
           </Paper>
-        </Container>
-      </main>
+        </motion.div>
+      </Container>
+      
       <Footer />
     </div>
   );
