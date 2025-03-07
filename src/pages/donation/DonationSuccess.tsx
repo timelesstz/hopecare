@@ -2,14 +2,14 @@ import { useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Check, Share2 } from 'lucide-react';
 import { useAnalytics } from '../../hooks/useAnalytics';
-import { useAuth } from '../../context/AuthContext';
+import { useFirebaseAuth } from '../../context/FirebaseAuthContext';
 import { useDonation } from '../../context/DonationContext';
 import { formatCurrency } from '../../lib/utils';
 
 const DonationSuccess = () => {
   const navigate = useNavigate();
   const { trackDonationEvent } = useAnalytics();
-  const { user } = useAuth();
+  const { user } = useFirebaseAuth();
   const { donationData, clearDonation } = useDonation();
 
   useEffect(() => {
@@ -22,7 +22,7 @@ const DonationSuccess = () => {
       eventType: 'donation_completed',
       amount: donationData.amount,
       currency: donationData.currency,
-      userId: user?.id,
+      userId: user?.uid,
       metadata: {
         donationType: donationData.donationType,
         projectId: donationData.projectId,
@@ -55,7 +55,7 @@ const DonationSuccess = () => {
           eventType: 'donation_shared',
           amount: donationData.amount,
           currency: donationData.currency,
-          userId: user?.id,
+          userId: user?.uid,
           metadata: {
             platform: 'web_share',
             projectId: donationData.projectId,

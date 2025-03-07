@@ -26,7 +26,7 @@ import {
   Snackbar
 } from '@mui/material';
 import { Edit, Delete, Visibility, VisibilityOff, Add } from '@mui/icons-material';
-import { useAuth } from '../../context/AuthContext';
+import { useFirebaseAuth } from '../../context/FirebaseAuthContext';
 import axios from 'axios';
 
 interface ApiConfig {
@@ -40,7 +40,7 @@ interface ApiConfig {
 }
 
 const ApiConfigManager: React.FC = () => {
-  const { user } = useAuth();
+  const { user } = useFirebaseAuth();
   const [configs, setConfigs] = useState<ApiConfig[]>([]);
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
   const [openDialog, setOpenDialog] = useState(false);

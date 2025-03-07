@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { supabase } from '../../lib/supabase';
+// Supabase client import removed - using Firebase instead
+import { db, auth } from '../lib/firebase';
 import { LoadingSpinner } from '../../components/ui/LoadingSpinner';
 import { useTheme } from '../../hooks/useTheme';
 

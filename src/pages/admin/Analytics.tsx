@@ -14,7 +14,7 @@ import {
   Legend,
   ResponsiveContainer,
 } from 'recharts';
-import { analytics } from '../../lib/analytics';
+import { analytics } from '../../lib/analytics-firebase';
 import { formatCurrency } from '../../lib/utils';
 
 interface DonationMetrics {

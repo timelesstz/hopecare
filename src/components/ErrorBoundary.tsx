@@ -1,56 +1,111 @@
-import React, { Component, ErrorInfo, ReactNode } from 'react';
+import React, { Component, ErrorInfo } from 'react';
+import { Button, Typography, Box, Container } from '@mui/material';
+import { logError } from '../utils/errorLogger';
 
 interface Props {
-  children: ReactNode;
+  children: React.ReactNode;
 }
 
 interface State {
   hasError: boolean;
   error: Error | null;
+  errorInfo: ErrorInfo | null;
 }
 
 class ErrorBoundary extends Component<Props, State> {
   public state: State = {
     hasError: false,
-    error: null
+    error: null,
+    errorInfo: null,
   };
 
   public static getDerivedStateFromError(error: Error): State {
     return {
       hasError: true,
-      error
+      error,
+      errorInfo: null,
     };
   }
 
   public componentDidCatch(error: Error, errorInfo: ErrorInfo) {
-    console.error('Uncaught error:', error, errorInfo);
+    this.setState({
+      error,
+      errorInfo,
+    });
+
+    // Log error to our error reporting service
+    logError('UI Error', {
+      error,
+      errorInfo,
+      location: window.location.href,
+      timestamp: new Date().toISOString(),
+    });
   }
+
+  private handleReload = () => {
+    window.location.reload();
+  };
+
+  private handleGoHome = () => {
+    window.location.href = '/';
+  };
 
   public render() {
     if (this.state.hasError) {
       return (
-        <div className="min-h-screen flex flex-col items-center justify-center p-4">
-          <div className="text-center max-w-md">
-            <h1 className="text-2xl font-bold mb-4 text-gray-800">Oops!</h1>
-            <p className="text-gray-600 mb-6">
-              {this.state.error?.message || 'Something went wrong. Please try again later.'}
-            </p>
-            <div className="space-y-4">
-              <button
-                onClick={() => window.location.reload()}
-                className="w-full py-2 px-4 bg-primary-600 text-white rounded-md hover:bg-primary-700 transition-colors"
+        <Container maxWidth="md">
+          <Box
+            display="flex"
+            flexDirection="column"
+            alignItems="center"
+            justifyContent="center"
+            minHeight="100vh"
+            textAlign="center"
+            py={4}
+          >
+            <Typography variant="h4" component="h1" gutterBottom>
+              Oops! Something went wrong
+            </Typography>
+            
+            <Typography variant="body1" color="text.secondary" paragraph>
+              We're sorry for the inconvenience. Our team has been notified and is working to fix the issue.
+            </Typography>
+
+            {process.env.NODE_ENV === 'development' && this.state.error && (
+              <Box my={4} textAlign="left" width="100%">
+                <Typography variant="h6" gutterBottom>
+                  Error Details:
+                </Typography>
+                <pre style={{ 
+                  backgroundColor: '#f5f5f5',
+                  padding: '1rem',
+                  borderRadius: '4px',
+                  overflow: 'auto'
+                }}>
+                  {this.state.error.toString()}
+                  {this.state.errorInfo?.componentStack}
+                </pre>
+              </Box>
+            )}
+
+            <Box display="flex" gap={2} mt={4}>
+              <Button
+                variant="contained"
+                color="primary"
+                onClick={this.handleReload}
               >
-                Try Again
-              </button>
-              <a
-                href="/"
-                className="block w-full py-2 px-4 bg-gray-100 text-gray-800 rounded-md hover:bg-gray-200 transition-colors"
+                Reload Page
+              </Button>
+              <Button
+                variant="outlined"
+                color="primary"
+                onClick={this.handleGoHome}
               >
-                Return to Home Page
-              </a>
-            </div>
-          </div>
-        </div>
+                Go to Homepage
+              </Button>
+            </Box>
+          </Box>
+        </Container>
       );
     }
 

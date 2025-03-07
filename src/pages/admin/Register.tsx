@@ -6,7 +6,7 @@ import { FormField, Input, Button } from '../../components/ui';
 import { PasswordStrength } from '../../components/ui/PasswordStrength';
 import { SocialAuth } from '../../components/ui/SocialAuth';
 import { useTheme } from '../../hooks/useTheme';
-import { useAuth } from '../../context/AuthContext';
+import { useFirebaseAuth } from '../../context/FirebaseAuthContext';
 import { toast } from '../../components/ui/Toast';
 
 interface RegisterForm {
@@ -32,7 +32,7 @@ const Register = () => {
   const [step, setStep] = useState<'social' | 'form'>('social');
   const navigate = useNavigate();
   const { isDarkMode } = useTheme();
-  const { register, socialAuth } = useAuth();
+  const { register, socialAuth } = useFirebaseAuth();
 
   const handleSocialAuth = async (provider: 'google' | 'microsoft') => {
     setIsLoading(true);

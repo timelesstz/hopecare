@@ -1,150 +1,254 @@
-import { useState } from 'react';
-import { Editor } from '@tinymce/tinymce-react';
+import React, { useState, useEffect } from 'react';
+import { useEditor, EditorContent } from '@tiptap/react';
+import StarterKit from '@tiptap/starter-kit';
+import Image from '@tiptap/extension-image';
+import Link from '@tiptap/extension-link';
+// Supabase client import removed - using Firebase instead
+import { db, auth } from '../lib/firebase';
+import { Button, IconButton, TextField, Select, MenuItem } from '@mui/material';
+import {
+  Save as SaveIcon,
+  Undo as UndoIcon,
+  Redo as RedoIcon,
+  FormatBold,
+  FormatItalic,
+  FormatListBulleted,
+  FormatListNumbered,
+  Image as ImageIcon,
+  Link as LinkIcon,
+} from '@mui/icons-material';
 
-interface ContentBlock {
+interface ContentVersion {
   id: string;
-  title: string;
   content: string;
-  type: 'page' | 'post' | 'program';
-  status: 'draft' | 'published';
+  created_at: string;
+  created_by: string;
+  comment: string;
 }
 
-const ContentEditor: React.FC = () => {
-  const [activeContent, setActiveContent] = useState<ContentBlock | null>(null);
-  const [contentList, setContentList] = useState<ContentBlock[]>([]);
+interface ContentEditorProps {
+  pageId: string;
+  initialContent?: string;
+  onSave?: (content: string) => void;
+}
 
-  const handleEditorChange = (content: string) => {
-    if (activeContent) {
-      setActiveContent({ ...activeContent, content });
+const ContentEditor: React.FC<ContentEditorProps> = ({
+  pageId,
+  initialContent = '',
+  onSave,
+}) => {
+  const [versions, setVersions] = useState<ContentVersion[]>([]);
+  const [selectedVersion, setSelectedVersion] = useState<string>('');
+  const [saveComment, setSaveComment] = useState('');
+  const [saving, setSaving] = useState(false);
+
+  const editor = useEditor({
+    extensions: [
+      StarterKit,
+      Image,
+      Link.configure({
+        openOnClick: false,
+      }),
+    ],
+    content: initialContent,
+  });
+
+  useEffect(() => {
+    fetchVersions();
+  }, [pageId]);
+
+  const fetchVersions = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('content_versions')
+        .select('*')
+        .eq('page_id', pageId)
+        .order('created_at', { ascending: false });
+
+      if (error) throw error;
+      setVersions(data);
+    } catch (error) {
+      console.error('Error fetching versions:', error);
     }
   };
 
-  const handleSave = () => {
-    if (activeContent) {
-      const updatedList = contentList.map(item =>
-        item.id === activeContent.id ? activeContent : item
-      );
-      setContentList(updatedList);
-      // TODO: Implement API call to save content
+  const handleSave = async () => {
+    if (!editor) return;
+
+    try {
+      setSaving(true);
+      const content = editor.getHTML();
+      
+      // Save new version
+      const { data, error } = await supabase
+        .from('content_versions')
+        .insert([
+          {
+            page_id: pageId,
+            content,
+            comment: saveComment,
+            created_at: new Date().toISOString(),
+          },
+        ])
+        .select()
+        .single();
+
+      if (error) throw error;
+
+      // Update page content
+      await supabase
+        .from('pages')
+        .update({ content })
+        .eq('id', pageId);
+
+      setSaveComment('');
+      fetchVersions();
+      onSave?.(content);
+    } catch (error) {
+      console.error('Error saving content:', error);
+    } finally {
+      setSaving(false);
     }
   };
 
-  const createNewContent = () => {
-    const newContent: ContentBlock = {
-      id: Date.now().toString(),
-      title: 'Untitled',
-      content: '',
-      type: 'page',
-      status: 'draft'
-    };
-    setContentList([...contentList, newContent]);
-    setActiveContent(newContent);
+  const handleVersionSelect = async (versionId: string) => {
+    try {
+      const version = versions.find((v) => v.id === versionId);
+      if (version && editor) {
+        editor.commands.setContent(version.content);
+      }
+    } catch (error) {
+      console.error('Error loading version:', error);
+    }
   };
+
+  const handleImageUpload = async (file: File) => {
+    try {
+      const filename = `${Date.now()}-${file.name}`;
+      const { data, error } = await supabase.storage
+        .from('content-images')
+        .upload(filename, file);
+
+      if (error) throw error;
+
+      const { data: { publicUrl } } = supabase.storage
+        .from('content-images')
+        .getPublicUrl(filename);
+
+      editor?.chain().focus().setImage({ src: publicUrl }).run();
+    } catch (error) {
+      console.error('Error uploading image:', error);
+    }
+  };
+
+  if (!editor) return null;
 
   return (
-    <div className="min-h-screen bg-gray-100 py-6">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="flex justify-between items-center mb-6">
-          <h1 className="text-3xl font-bold text-gray-900">Content Editor</h1>
-          <button
-            onClick={createNewContent}
-            className="bg-hopecare-blue text-white px-4 py-2 rounded-md hover:bg-hopecare-blue-dark"
-          >
-            New Content
-          </button>
-        </div>
+    <div className="space-y-4">
+      {/* Toolbar */}
+      <div className="flex items-center space-x-2 border-b pb-2">
+        <IconButton
+          onClick={() => editor.chain().focus().toggleBold().run()}
+          className={editor.isActive('bold') ? 'bg-gray-200' : ''}
+        >
+          <FormatBold />
+        </IconButton>
+        <IconButton
+          onClick={() => editor.chain().focus().toggleItalic().run()}
+          className={editor.isActive('italic') ? 'bg-gray-200' : ''}
+        >
+          <FormatItalic />
+        </IconButton>
+        <IconButton
+          onClick={() => editor.chain().focus().toggleBulletList().run()}
+          className={editor.isActive('bulletList') ? 'bg-gray-200' : ''}
+        >
+          <FormatListBulleted />
+        </IconButton>
+        <IconButton
+          onClick={() => editor.chain().focus().toggleOrderedList().run()}
+          className={editor.isActive('orderedList') ? 'bg-gray-200' : ''}
+        >
+          <FormatListNumbered />
+        </IconButton>
+        <input
+          type="file"
+          id="image-upload"
+          hidden
+          accept="image/*"
+          onChange={(e) => {
+            const file = e.target.files?.[0];
+            if (file) handleImageUpload(file);
+          }}
+        />
+        <IconButton
+          onClick={() => document.getElementById('image-upload')?.click()}
+        >
+          <ImageIcon />
+        </IconButton>
+        <IconButton
+          onClick={() => {
+            const url = prompt('Enter URL:');
+            if (url) {
+              editor.chain().focus().setLink({ href: url }).run();
+            }
+          }}
+        >
+          <LinkIcon />
+        </IconButton>
+        <div className="flex-1" />
+        <IconButton
+          onClick={() => editor.chain().focus().undo().run()}
+          disabled={!editor.can().undo()}
+        >
+          <UndoIcon />
+        </IconButton>
+        <IconButton
+          onClick={() => editor.chain().focus().redo().run()}
+          disabled={!editor.can().redo()}
+        >
+          <RedoIcon />
+        </IconButton>
+      </div>
 
-        <div className="grid grid-cols-12 gap-6">
-          {/* Content List Sidebar */}
-          <div className="col-span-3 bg-white rounded-lg shadow p-4">
-            <h2 className="text-lg font-semibold mb-4">Content List</h2>
-            <div className="space-y-2">
-              {contentList.map(content => (
-                <div
-                  key={content.id}
-                  onClick={() => setActiveContent(content)}
-                  className={`p-2 rounded cursor-pointer ${
-                    activeContent?.id === content.id
-                      ? 'bg-hopecare-blue text-white'
-                      : 'hover:bg-gray-100'
-                  }`}
-                >
-                  <div className="font-medium">{content.title}</div>
-                  <div className="text-sm">{content.type} • {content.status}</div>
-                </div>
-              ))}
-            </div>
-          </div>
+      {/* Editor */}
+      <EditorContent editor={editor} className="prose max-w-none min-h-[300px] border rounded-lg p-4" />
 
-          {/* Editor Area */}
-          <div className="col-span-9 bg-white rounded-lg shadow p-4">
-            {activeContent ? (
-              <div className="space-y-4">
-                <input
-                  type="text"
-                  value={activeContent.title}
-                  onChange={(e) => setActiveContent({ ...activeContent, title: e.target.value })}
-                  className="w-full px-3 py-2 border rounded-md"
-                  placeholder="Enter title"
-                />
-                <div className="flex space-x-4 mb-4">
-                  <select
-                    value={activeContent.type}
-                    onChange={(e) => setActiveContent({ ...activeContent, type: e.target.value as ContentBlock['type'] })}
-                    className="px-3 py-2 border rounded-md"
-                  >
-                    <option value="page">Page</option>
-                    <option value="post">Post</option>
-                    <option value="program">Program</option>
-                  </select>
-                  <select
-                    value={activeContent.status}
-                    onChange={(e) => setActiveContent({ ...activeContent, status: e.target.value as ContentBlock['status'] })}
-                    className="px-3 py-2 border rounded-md"
-                  >
-                    <option value="draft">Draft</option>
-                    <option value="published">Published</option>
-                  </select>
-                </div>
-                <Editor
-                  apiKey="your-tinymce-api-key" // TODO: Add your TinyMCE API key
-                  value={activeContent.content}
-                  init={{
-                    height: 500,
-                    menubar: true,
-                    plugins: [
-                      'advlist', 'autolink', 'lists', 'link', 'image', 'charmap', 'preview',
-                      'anchor', 'searchreplace', 'visualblocks', 'code', 'fullscreen',
-                      'insertdatetime', 'media', 'table', 'code', 'help', 'wordcount'
-                    ],
-                    toolbar: 'undo redo | blocks | bold italic forecolor | alignleft aligncenter ' +
-                      'alignright alignjustify | bullist numlist outdent indent | ' +
-                      'removeformat | help'
-                  }}
-                  onEditorChange={handleEditorChange}
-                />
-                <div className="flex justify-end space-x-4">
-                  <button
-                    onClick={() => setActiveContent(null)}
-                    className="px-4 py-2 border rounded-md hover:bg-gray-100"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    onClick={handleSave}
-                    className="px-4 py-2 bg-hopecare-blue text-white rounded-md hover:bg-hopecare-blue-dark"
-                  >
-                    Save
-                  </button>
-                </div>
-              </div>
-            ) : (
-              <div className="text-center py-12 text-gray-500">
-                Select a content item or create a new one to start editing
-              </div>
-            )}
-          </div>
-        </div>
+      {/* Version Control */}
+      <div className="flex items-center space-x-4">
+        <TextField
+          label="Save Comment"
+          value={saveComment}
+          onChange={(e) => setSaveComment(e.target.value)}
+          size="small"
+          className="flex-1"
+        />
+        <Button
+          variant="contained"
+          startIcon={<SaveIcon />}
+          onClick={handleSave}
+          disabled={saving}
+        >
+          {saving ? 'Saving...' : 'Save Version'}
+        </Button>
+      </div>
+
+      {/* Version History */}
+      <div>
+        <Select
+          value={selectedVersion}
+          onChange={(e) => handleVersionSelect(e.target.value as string)}
+          displayEmpty
+          fullWidth
+          size="small"
+        >
+          <MenuItem value="">Current Version</MenuItem>
+          {versions.map((version) => (
+            <MenuItem key={version.id} value={version.id}>
+              {new Date(version.created_at).toLocaleString()} - {version.comment}
+            </MenuItem>
+          ))}
+        </Select>
       </div>
     </div>
   );

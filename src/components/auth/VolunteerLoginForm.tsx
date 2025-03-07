@@ -2,8 +2,9 @@ import React from 'react';
 import { useForm, Controller } from 'react-hook-form';
 import { z } from 'zod';
 import { zodResolver } from '@hookform/resolvers/zod';
-import { TextField, Button, FormControlLabel, Checkbox, Box } from '@mui/material';
+import { TextField, Button, FormControlLabel, Checkbox, Box, Typography, Link as MuiLink } from '@mui/material';
 import { Mail, Lock } from 'lucide-react';
+import { Link } from 'react-router-dom';
 
 const loginSchema = z.object({
   email: z.string().email('Invalid email address'),
@@ -82,23 +83,31 @@ const VolunteerLoginForm: React.FC<VolunteerLoginFormProps> = ({ onSubmit, isLoa
         )}
       />
 
-      <Controller
-        name="rememberMe"
-        control={control}
-        render={({ field }) => (
-          <FormControlLabel
-            control={
-              <Checkbox
-                {...field}
-                checked={field.value}
-                color="primary"
-                disabled={isLoading}
-              />
-            }
-            label="Remember me"
-          />
-        )}
-      />
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mt: 1 }}>
+        <Controller
+          name="rememberMe"
+          control={control}
+          render={({ field }) => (
+            <FormControlLabel
+              control={
+                <Checkbox
+                  {...field}
+                  checked={field.value}
+                  color="primary"
+                  disabled={isLoading}
+                />
+              }
+              label="Remember me"
+            />
+          )}
+        />
+        
+        <Link to="/forgot-password" style={{ textDecoration: 'none' }}>
+          <MuiLink component="span" variant="body2" color="primary">
+            Forgot password?
+          </MuiLink>
+        </Link>
+      </Box>
 
       <Box sx={{ mt: 3 }}>
         <Button

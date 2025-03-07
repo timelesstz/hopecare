@@ -1,4 +1,6 @@
-import { Session } from '@supabase/supabase-js';
+// Supabase import removed - using Firebase instead;
+import { NextApiRequest, NextApiResponse } from 'next';
+import crypto from 'crypto';
 
 export const SESSION_DURATION = 3600; // 1 hour in seconds
 export const MAX_LOGIN_ATTEMPTS = 5;
@@ -68,3 +70,102 @@ class SecurityManager {
 }
 
 export const securityManager = SecurityManager.getInstance();
+
+export const securityHeaders = (
+  handler: (req: NextApiRequest, res: NextApiResponse) => Promise<void>
+) => {
+  return async (req: NextApiRequest, res: NextApiResponse) => {
+    // Set security headers
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.setHeader('X-Frame-Options', 'DENY');
+    res.setHeader('X-XSS-Protection', '1; mode=block');
+    res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+    res.setHeader(
+      'Content-Security-Policy',
+      "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; font-src 'self' data:;"
+    );
+    res.setHeader(
+      'Permissions-Policy',
+      'camera=(), microphone=(), geolocation=(), interest-cohort=()'
+    );
+
+    // CSRF Protection
+    if (req.method !== 'GET' && req.method !== 'HEAD') {
+      const csrfToken = req.headers['x-csrf-token'];
+      const storedToken = req.cookies['csrf-token'];
+
+      if (!csrfToken || !storedToken || csrfToken !== storedToken) {
+        return res.status(403).json({ error: 'Invalid CSRF token' });
+      }
+    }
+
+    // Generate new CSRF token for GET requests
+    if (req.method === 'GET') {
+      const newToken = crypto.randomBytes(32).toString('hex');
+      res.setHeader('Set-Cookie', `csrf-token=${newToken}; Path=/; HttpOnly; Secure; SameSite=Strict`);
+      res.setHeader('X-CSRF-Token', newToken);
+    }
+
+    // Input validation for POST/PUT/PATCH requests
+    if (['POST', 'PUT', 'PATCH'].includes(req.method)) {
+      const contentType = req.headers['content-type'];
+      if (!contentType?.includes('application/json')) {
+        return res.status(415).json({ error: 'Unsupported Media Type' });
+      }
+
+      try {
+        // Basic input sanitization
+        const sanitizedBody = sanitizeInput(req.body);
+        req.body = sanitizedBody;
+      } catch (error) {
+        return res.status(400).json({ error: 'Invalid input' });
+      }
+    }
+
+    return handler(req, res);
+  };
+};
+
+const sanitizeInput = (input: any): any => {
+  if (typeof input === 'string') {
+    // Remove potential XSS vectors
+    return input
+      .replace(/[<>]/g, '')
+      .replace(/javascript:/gi, '')
+      .replace(/on\w+=/gi, '')
+      .trim();
+  }
+
+  if (Array.isArray(input)) {
+    return input.map(item => sanitizeInput(item));
+  }
+
+  if (typeof input === 'object' && input !== null) {
+    const sanitized = {};
+    for (const [key, value] of Object.entries(input)) {
+      sanitized[key] = sanitizeInput(value);
+    }
+    return sanitized;
+  }
+
+  return input;
+};
+
+// Virus scanning for file uploads
+export const scanFile = async (buffer: Buffer): Promise<boolean> => {
+  try {
+    // Implement virus scanning logic here
+    // This is a placeholder - you should integrate with a proper antivirus service
+    const fileHash = crypto.createHash('sha256').update(buffer).digest('hex');
+    
+    // Example integration with ClamAV or similar service
+    // const scanner = new NodeClam();
+    // const {isInfected, viruses} = await scanner.scanBuffer(buffer);
+    // return !isInfected;
+    
+    return true;
+  } catch (error) {
+    console.error('File scanning error:', error);
+    return false;
+  }
+};

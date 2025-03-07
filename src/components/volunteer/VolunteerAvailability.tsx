@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { Save, X } from 'lucide-react';
-import { supabase } from '../../lib/supabase';
-import { useAuth } from '../../context/AuthContext';
+// Supabase client import removed - using Firebase instead
+import { db, auth } from '../../lib/firebase';
+import { useFirebaseAuth } from '../../context/FirebaseAuthContext';
 import { Database } from '../../types/supabase';
 
 type VolunteerAvailability = Database['public']['Tables']['volunteer_availability']['Row'];
@@ -24,7 +25,7 @@ const TIME_SLOTS = Array.from({ length: 24 }, (_, i) => {
 });
 
 const VolunteerAvailabilityComponent: React.FC = () => {
-  const { user } = useAuth();
+  const { user } = useFirebaseAuth();
   const [timeSlots, setTimeSlots] = useState<TimeSlot[]>([]);
   const [isEditing, setIsEditing] = useState(false);
   const [error, setError] = useState<string | null>(null);

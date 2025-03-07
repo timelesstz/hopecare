@@ -1,6 +1,17 @@
-import { User } from '@supabase/supabase-js';
 import { createContext, useContext, useEffect, useState } from 'react';
-import { supabase } from '../lib/supabase';
+import { db, auth } from '../lib/firebase';
+import { 
+  User as FirebaseUser, 
+  onAuthStateChanged, 
+  signOut as firebaseSignOut 
+} from 'firebase/auth';
+import { doc, getDoc } from 'firebase/firestore';
+
+interface User {
+  uid: string;
+  email: string | null;
+  displayName: string | null;
+}
 
 interface AuthContextType {
   user: User | null;
@@ -20,14 +31,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const checkAdminStatus = async (userId: string): Promise<boolean> => {
     try {
-      const { data, error } = await supabase
-        .from('users')
-        .select('role')
-        .eq('id', userId)
-        .single();
-
-      if (error) throw error;
-      return data?.role === 'admin';
+      const userDoc = await getDoc(doc(db, 'users', userId));
+      if (!userDoc.exists()) return false;
+      
+      const userData = userDoc.data();
+      return userData?.role === 'ADMIN';
     } catch (error) {
       console.error('Error checking admin status:', error);
       return false;
@@ -35,20 +43,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   useEffect(() => {
-    // Check current auth status
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      if (session?.user) {
-        setUser(session.user);
-        checkAdminStatus(session.user.id).then(setIsAdmin);
-      }
-      setLoading(false);
-    });
-
-    // Listen for auth changes
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
-      if (session?.user) {
-        setUser(session.user);
-        const adminStatus = await checkAdminStatus(session.user.id);
+    // Listen for auth changes with Firebase
+    const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
+      if (firebaseUser) {
+        const userObj: User = {
+          uid: firebaseUser.uid,
+          email: firebaseUser.email,
+          displayName: firebaseUser.displayName
+        };
+        
+        setUser(userObj);
+        const adminStatus = await checkAdminStatus(firebaseUser.uid);
         setIsAdmin(adminStatus);
       } else {
         setUser(null);
@@ -57,13 +62,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setLoading(false);
     });
 
-    return () => {
-      subscription.unsubscribe();
-    };
+    // Cleanup subscription
+    return () => unsubscribe();
   }, []);
 
   const signOut = async () => {
-    await supabase.auth.signOut();
+    await firebaseSignOut(auth);
     setUser(null);
     setIsAdmin(false);
   };

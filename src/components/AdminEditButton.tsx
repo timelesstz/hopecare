@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Edit2, X, Save } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
-import { useAuth } from '../context/AuthContext';
+import { useFirebaseAuth } from '../context/FirebaseAuthContext';
 import { usePages } from '../context/PageContext';
 
 interface AdminEditButtonProps {
@@ -9,7 +9,7 @@ interface AdminEditButtonProps {
 }
 
 const AdminEditButton: React.FC<AdminEditButtonProps> = ({ pageId }) => {
-  const { user } = useAuth();
+  const { user } = useFirebaseAuth();
   const { pages, updatePage } = usePages();
   const navigate = useNavigate();
   const [isEditing, setIsEditing] = useState(false);

@@ -3,7 +3,7 @@ import { useForm } from 'react-hook-form';
 import { z } from 'zod';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { Mail, ArrowLeft } from 'lucide-react';
-import { useAuth } from '../../context/AuthContext';
+import { useFirebaseAuth } from '../../context/FirebaseAuthContext';
 
 const resetSchema = z.object({
   email: z.string().email('Invalid email address')
@@ -16,7 +16,7 @@ interface PasswordResetFormProps {
 }
 
 const PasswordResetForm: React.FC<PasswordResetFormProps> = ({ onBack }) => {
-  const { resetPassword } = useAuth();
+  const { resetPassword } = useFirebaseAuth();
   const [isSubmitted, setIsSubmitted] = useState(false);
   const { register, handleSubmit, formState: { errors } } = useForm<ResetFormData>({
     resolver: zodResolver(resetSchema)

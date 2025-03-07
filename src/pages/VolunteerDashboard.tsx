@@ -4,11 +4,11 @@ import VolunteerProfile from '../components/volunteer/VolunteerProfile';
 import VolunteerTeam from '../components/volunteer/VolunteerTeam';
 import VolunteerSettings from '../components/volunteer/VolunteerSettings';
 import VolunteerOpportunities from '../components/volunteer/VolunteerOpportunities';
-import { useAuth } from '../context/AuthContext';
+import { useFirebaseAuth } from '../context/FirebaseAuthContext';
 
 const VolunteerDashboard = () => {
   const [activeTab, setActiveTab] = useState('overview');
-  const { user } = useAuth();
+  const { user } = useFirebaseAuth();
 
   const mockVolunteer = {
     id: user?.id || '',

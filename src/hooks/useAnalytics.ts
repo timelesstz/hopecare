@@ -1,5 +1,5 @@
 import { useCallback } from 'react';
-import { analytics } from '../lib/analytics';
+import { analytics } from '../lib/analytics-firebase';
 import { AnalyticsEvent } from '../types/analytics';
 
 export const useAnalytics = () => {

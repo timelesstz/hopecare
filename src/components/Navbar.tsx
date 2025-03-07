@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { Menu, X, ChevronDown, Heart, LogIn, UserCircle, Home, BookOpen, Calendar, MessageSquare, ChevronRight } from 'lucide-react';
-import { useAuth } from '../context/AuthContext';
+import { useFirebaseAuth } from '../context/FirebaseAuthContext';
 import { motion, AnimatePresence } from 'framer-motion';
 
 const Navbar = () => {
@@ -10,7 +10,7 @@ const Navbar = () => {
   const [activeSubmenu, setActiveSubmenu] = useState<string | null>(null);
   const location = useLocation();
   const navigate = useNavigate();
-  const { user, logout } = useAuth();
+  const { user, logout } = useFirebaseAuth();
 
   useEffect(() => {
     const handleScroll = () => {
@@ -187,14 +187,14 @@ const Navbar = () => {
                   <div className="absolute right-0 mt-2 w-48 rounded-xl bg-white shadow-lg ring-1 ring-black ring-opacity-5 opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 z-50">
                     <div className="py-2 px-1">
                       <Link
-                        to="/donor-auth"
+                        to="/donor-login"
                         className="block px-4 py-3 text-sm text-gray-700 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors duration-200"
                       >
                         <Heart className="inline h-4 w-4 mr-2" />
                         Donor Login
                       </Link>
                       <Link
-                        to="/volunteer"
+                        to="/volunteer-login"
                         className="block px-4 py-3 text-sm text-gray-700 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors duration-200"
                       >
                         <UserCircle className="inline h-4 w-4 mr-2" />
@@ -398,8 +398,8 @@ const Navbar = () => {
                       Login Options
                     </div>
                     {[
-                      { label: 'Donor Login', path: '/donor-auth', icon: Heart },
-                      { label: 'Volunteer Login', path: '/volunteer', icon: UserCircle },
+                      { label: 'Donor Login', path: '/donor-login', icon: Heart },
+                      { label: 'Volunteer Login', path: '/volunteer-login', icon: UserCircle },
                       { label: 'Admin Login', path: '/admin/login', icon: LogIn }
                     ].map((option, index) => (
                       <Link

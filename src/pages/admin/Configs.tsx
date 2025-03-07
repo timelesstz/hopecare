@@ -1,10 +1,10 @@
 import React from 'react';
 import ApiConfigManager from '../../components/admin/ApiConfigManager';
-import { useAuth } from '../../context/AuthContext';
+import { useFirebaseAuth } from '../../context/FirebaseAuthContext';
 import { Navigate } from 'react-router-dom';
 
 const ConfigsPage: React.FC = () => {
-  const { user, isAdmin } = useAuth();
+  const { user, isAdmin } = useFirebaseAuth();
 
   if (!user || !isAdmin) {
     return <Navigate to="/admin/login" replace />;

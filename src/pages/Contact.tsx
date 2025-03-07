@@ -186,15 +186,15 @@ const Contact = () => {
                   <div>
                     <p className="font-semibold">Phone</p>
                     <p>Tel/Fax: <a href="tel:+255272509720" className="text-primary hover:underline">+255 (0) 27 2509720</a></p>
-                    <p>Mobile: <a href="tel:+255769297925" className="text-primary hover:underline">+255 769 297925</a></p>
+                    <p>Mobile: <a href="tel:+255742484571" className="text-primary hover:underline">+255 742 484 571</a></p>
                   </div>
                 </div>
                 <div className="flex items-start space-x-4">
                   <Mail className="text-primary mt-1" />
                   <div>
                     <p className="font-semibold">Email</p>
-                    <a href="mailto:hopecare.tz@gmail.com" className="text-primary hover:underline">
-                      hopecare.tz@gmail.com
+                    <a href="mailto:director@hopecaretz.org" className="text-primary hover:underline">
+                    director@hopecaretz.org
                     </a>
                   </div>
                 </div>

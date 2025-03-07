@@ -21,82 +21,88 @@ import EconomicEmpowerment from './pages/programs/EconomicEmpowerment';
 import Projects from './pages/Projects';
 import NotFound from './pages/NotFound';
 import VolunteerDashboard from './pages/VolunteerDashboard';
-import { useAuth } from './context/AuthContext';
+import VolunteerAuth from './pages/VolunteerAuth';
+import ResetPassword from './pages/ResetPassword';
+import ForgotPassword from './pages/ForgotPassword';
+import FirebaseAuthTest from './pages/FirebaseAuthTest';
+import FirebaseProtectedRoute from './components/auth/FirebaseProtectedRoute';
+import { useFirebaseAuth } from './context/FirebaseAuthContext';
 
-interface ProtectedRouteProps {
-  children: React.ReactNode;
-  requiredRole: 'ADMIN' | 'DONOR' | 'VOLUNTEER';
-}
-
-const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ children, requiredRole }) => {
-  const { user, loading } = useAuth();
-  const location = useLocation();
-
-  if (loading) {
-    return <div>Loading...</div>;
-  }
-
-  if (!user) {
-    // Redirect to appropriate auth page based on role
-    switch (requiredRole) {
-      case 'ADMIN':
-        return <Navigate to="/admin/login" state={{ from: location }} replace />;
-      case 'DONOR':
-        return <Navigate to="/donor-auth" state={{ from: location }} replace />;
-      case 'VOLUNTEER':
-        return <Navigate to="/volunteer" state={{ from: location }} replace />;
-      default:
-        return <Navigate to="/" replace />;
+// Login router component to redirect based on user role
+const Login = () => {
+  const { isAuthenticated, user } = useFirebaseAuth();
+  
+  if (isAuthenticated) {
+    const role = user?.role;
+    if (role === 'DONOR') {
+      return <Navigate to="/donor/dashboard" replace />;
+    } else if (role === 'VOLUNTEER') {
+      return <Navigate to="/volunteer-dashboard" replace />;
+    } else if (role === 'ADMIN') {
+      return <Navigate to="/admin/dashboard" replace />;
     }
   }
-
-  // Check if user has the required role
-  if (user.role !== requiredRole) {
-    return <Navigate to="/" replace />;
-  }
-
-  return <>{children}</>;
+  
+  return <Navigate to="/donor-login" replace />;
 };
 
 const AppRouter: React.FC = () => {
   return (
     <Routes>
-      <Route path="/" element={<PageLayout />}>
-        <Route index element={<Home />} />
-        <Route path="about" element={<About />} />
-        <Route path="donate" element={<Donate />} />
-        <Route path="events" element={<Events />} />
-        <Route path="blog" element={<Blog />} />
-        <Route path="blog/:id" element={<BlogPost />} />
-        <Route path="volunteer" element={<Volunteer />} />
-        <Route path="contact" element={<Contact />} />
-        <Route path="donation-success" element={<DonationSuccess />} />
-        <Route path="donation-cancel" element={<DonationCancel />} />
-        <Route path="donor-dashboard" element={
-          <ProtectedRoute requiredRole="DONOR">
-            <DonorDashboard />
-          </ProtectedRoute>
-        } />
-        <Route path="donor-auth" element={<DonorAuth />} />
-        <Route path="admin/login" element={<AdminLogin />} />
-        <Route path="admin/dashboard" element={
-          <ProtectedRoute requiredRole="ADMIN">
-            <AdminDashboard />
-          </ProtectedRoute>
-        } />
-        <Route path="programs">
-          <Route path="education" element={<Education />} />
-          <Route path="health" element={<Health />} />
-          <Route path="economic-empowerment" element={<EconomicEmpowerment />} />
-        </Route>
-        <Route path="projects" element={<Projects />} />
-        <Route path="volunteer-dashboard" element={
-          <ProtectedRoute requiredRole="VOLUNTEER">
-            <VolunteerDashboard />
-          </ProtectedRoute>
-        } />
-        <Route path="*" element={<NotFound />} />
+      {/* Public routes */}
+      <Route element={<PageLayout />}>
+        <Route path="/" element={<Home />} />
+        <Route path="/about" element={<About />} />
+        <Route path="/donate" element={<Donate />} />
+        <Route path="/events" element={<Events />} />
+        <Route path="/blog" element={<Blog />} />
+        <Route path="/blog/:id" element={<BlogPost />} />
+        <Route path="/volunteer" element={<Volunteer />} />
+        <Route path="/contact" element={<Contact />} />
+        <Route path="/programs/education" element={<Education />} />
+        <Route path="/programs/health" element={<Health />} />
+        <Route path="/programs/economic-empowerment" element={<EconomicEmpowerment />} />
+        <Route path="/projects" element={<Projects />} />
+        <Route path="/donation/success" element={<DonationSuccess />} />
+        <Route path="/donation/cancel" element={<DonationCancel />} />
+        <Route path="/firebase-auth-test" element={<FirebaseAuthTest />} />
       </Route>
+
+      {/* Authentication routes */}
+      <Route path="/login" element={<Login />} />
+      <Route path="/donor-login" element={<DonorAuth />} />
+      <Route path="/volunteer-login" element={<VolunteerAuth />} />
+      <Route path="/admin/login" element={<AdminLogin />} />
+      <Route path="/reset-password" element={<ResetPassword />} />
+      <Route path="/forgot-password" element={<ForgotPassword />} />
+
+      {/* Protected routes */}
+      <Route path="/donor/dashboard" element={
+        <FirebaseProtectedRoute requiredRole="DONOR">
+          <PageLayout>
+            <DonorDashboard />
+          </PageLayout>
+        </FirebaseProtectedRoute>
+      } />
+      
+      <Route path="/volunteer-dashboard" element={
+        <FirebaseProtectedRoute requiredRole="VOLUNTEER">
+          <PageLayout>
+            <VolunteerDashboard />
+          </PageLayout>
+        </FirebaseProtectedRoute>
+      } />
+      
+      <Route path="/admin/dashboard" element={
+        <FirebaseProtectedRoute requiredRole="ADMIN">
+          <PageLayout>
+            <AdminDashboard />
+          </PageLayout>
+        </FirebaseProtectedRoute>
+      } />
+
+      {/* Fallback route */}
+      <Route path="*" element={<NotFound />} />
     </Routes>
   );
 };

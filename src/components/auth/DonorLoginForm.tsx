@@ -3,6 +3,7 @@ import { useForm } from 'react-hook-form';
 import { z } from 'zod';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { Mail, Lock } from 'lucide-react';
+import { Link } from 'react-router-dom';
 
 const loginSchema = z.object({
   email: z.string().email('Invalid email address'),
@@ -67,9 +68,9 @@ const DonorLoginForm: React.FC<DonorLoginFormProps> = ({ onSubmit, isLoading }) 
         </div>
 
         <div className="text-sm">
-          <a href="#" className="font-medium text-rose-600 hover:text-rose-500">
+          <Link to="/forgot-password" className="font-medium text-rose-600 hover:text-rose-500">
             Forgot your password?
-          </a>
+          </Link>
         </div>
       </div>
 
@@ -80,6 +81,15 @@ const DonorLoginForm: React.FC<DonorLoginFormProps> = ({ onSubmit, isLoading }) 
       >
         {isLoading ? 'Signing in...' : 'Sign in'}
       </button>
+
+      <div className="mt-4 text-sm">
+        <p className="font-medium text-gray-700">Sample donor accounts:</p>
+        <ul className="mt-2 space-y-1 list-disc pl-5">
+          <li><strong>Regular donor:</strong> john.doe@example.com / Donor2024!</li>
+          <li><strong>Monthly donor:</strong> sarah.smith@example.com / Giving2024@</li>
+          <li><strong>Corporate donor:</strong> david.wilson@example.com / Support2024#</li>
+        </ul>
+      </div>
     </form>
   );
 };

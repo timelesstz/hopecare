@@ -3,7 +3,15 @@ import { Heart, Gift, Users, Trophy, Sparkles, ArrowRight, Target, Calendar, Rep
 import DonationTier from '../components/DonationTier';
 import CustomDonationInput from '../components/CustomDonationInput';
 import { motion } from 'framer-motion';
-import { useDonation } from '../context/DonationContext'; 
+import { useDonation } from '../context/DonationContext';
+import { useFlutterwave, closePaymentModal } from 'flutterwave-react-v3';
+import { initializePayment, handlePaymentCallback } from '../services/payment';
+import { useFirebaseAuth } from '../context/FirebaseAuthContext';
+import PaymentErrorRecovery from '../components/PaymentErrorRecovery';
+import { addDoc, collection } from 'firebase/firestore';
+import { db } from '../lib/firebase';
+import { analytics } from '../lib/analytics-firebase';
+import { useNavigate } from 'react-router-dom';
 
 const DONATION_TIERS = [
   {
@@ -97,6 +105,7 @@ const DONATION_TYPES = [
 
 const Donate = () => {
   const { setDonationData } = useDonation();
+  const { user } = useFirebaseAuth();
   const [selectedAmount, setSelectedAmount] = useState<number | null>(null);
   const [customAmount, setCustomAmount] = useState('');
   const [isCustomSelected, setIsCustomSelected] = useState(false);
@@ -104,12 +113,18 @@ const Donate = () => {
   const [donationType, setDonationType] = useState<'one-time' | 'monthly' | 'recurring'>('one-time');
   const [showSuccessMessage, setShowSuccessMessage] = useState(false);
   const [selectedTierId, setSelectedTierId] = useState<string | null>(null);
+  const [paymentError, setPaymentError] = useState<{
+    type: 'initialization' | 'processing' | 'verification' | 'cancelled' | 'unknown';
+    message: string;
+  } | null>(null);
+  const navigate = useNavigate();
 
   const handleTierSelect = (tierId: string, amount: number) => {
     setSelectedTierId(tierId);
     setSelectedAmount(amount);
     setIsCustomSelected(false);
     setError(null);
+    setPaymentError(null);
   };
 
   const handleCustomSelect = () => {
@@ -117,6 +132,7 @@ const Donate = () => {
     setSelectedAmount(null);
     setIsCustomSelected(true);
     setError(null);
+    setPaymentError(null);
   };
 
   const handleCustomAmountChange = (value: string) => {
@@ -131,18 +147,122 @@ const Donate = () => {
     }
   };
 
-  const handleSuccess = () => {
-    setShowSuccessMessage(true);
-    setDonationData(null);
-    setTimeout(() => {
-      setShowSuccessMessage(false);
-      // Reset form
-      setSelectedTierId(null);
-      setSelectedAmount(null);
-      setCustomAmount('');
-      setIsCustomSelected(false);
-      setDonationType('one-time');
-    }, 5000);
+  const handleSuccess = async (paymentData: any) => {
+    try {
+      // Store donation in database
+      const donationData = {
+        amount: paymentData.amount,
+        currency: paymentData.currency || 'USD',
+        type: donationType === 'monthly' ? 'monthly' : 'one-time',
+        status: 'completed',
+        payment_method: paymentData.payment_method || 'card',
+        donor_id: user?.id,
+        donor_name: user?.displayName || 'Anonymous',
+        donor_email: user?.email,
+        project_id: selectedProject?.id,
+        created_at: new Date().toISOString(),
+      };
+      
+      // Add donation to Firestore
+      await addDoc(collection(db, 'donations'), donationData);
+      
+      // Update UI
+      setDonationData({
+        amount: paymentData.amount,
+        currency: paymentData.currency || 'USD',
+        date: new Date().toISOString(),
+        project: selectedProject?.name || 'General Fund',
+      });
+      
+      // Track donation in analytics
+      analytics.trackDonation({
+        amount: paymentData.amount,
+        currency: paymentData.currency || 'USD',
+        project_id: selectedProject?.id,
+        donation_type: donationType === 'monthly' ? 'monthly' : 'one-time',
+        payment_method: paymentData.payment_method || 'card',
+      });
+      
+      // Navigate to success page
+      navigate('/donation/success');
+    } catch (error) {
+      console.error('Error storing donation:', error);
+      setError('Failed to record donation. Please contact support.');
+    }
+  };
+
+  const handleDonation = async () => {
+    if (!user) {
+      setError('Please log in to make a donation');
+      return;
+    }
+
+    const amount = isCustomSelected ? parseFloat(customAmount) : selectedAmount;
+    if (!amount || amount < 1) {
+      setError('Please select or enter a valid donation amount');
+      return;
+    }
+
+    // Clear any previous errors
+    setError(null);
+    setPaymentError(null);
+
+    const config = initializePayment({
+      amount,
+      email: user.email,
+      name: user.name,
+    });
+
+    try {
+      const flutterwave = useFlutterwave(config);
+      
+      flutterwave({
+        callback: async (response) => {
+          closePaymentModal();
+          if (response.status === 'successful') {
+            try {
+              const verificationResult = await handlePaymentCallback(response);
+              if (verificationResult.status === 'complete') {
+                // Pass payment data to handleSuccess
+                await handleSuccess({
+                  amount,
+                  transaction_id: response.transaction_id,
+                  tx_ref: response.tx_ref,
+                  currency: 'USD',
+                });
+              } else {
+                setPaymentError({
+                  type: 'verification',
+                  message: 'Your payment was processed, but we could not verify it. Reference: ' + response.transaction_id
+                });
+              }
+            } catch (error) {
+              setPaymentError({
+                type: 'verification',
+                message: error instanceof Error ? error.message : 'Unknown verification error'
+              });
+            }
+          } else {
+            setPaymentError({
+              type: 'processing',
+              message: `Payment was not successful. Status: ${response.status}`
+            });
+          }
+        },
+        onClose: () => {
+          setPaymentError({
+            type: 'cancelled',
+            message: 'You cancelled the payment process'
+          });
+        },
+      });
+    } catch (error) {
+      console.error('Payment initialization error:', error);
+      setPaymentError({
+        type: 'initialization',
+        message: error instanceof Error ? error.message : 'Failed to initialize payment'
+      });
+    }
   };
 
   return (
@@ -252,28 +372,39 @@ const Donate = () => {
         </div>
       </div>
 
-      {/* Payment Form */}
-      {((selectedAmount && !error) || (isCustomSelected && customAmount && !error)) && (
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 py-8"
-        >
-          <div className="bg-white rounded-lg shadow-lg p-6">
-            <div className="text-center">
-              <h3 className="text-2xl font-semibold mb-4">Complete Your Donation</h3>
-              <p className="text-gray-600 mb-6">
-                Thank you for your generosity! Please click the button below to proceed with your donation.
-              </p>
-              <button
-                onClick={handleSuccess}
-                className="bg-primary-600 text-white px-6 py-3 rounded-lg hover:bg-primary-700 transition-colors"
-              >
-                Complete Donation
-              </button>
-            </div>
-          </div>
-        </motion.div>
+      {/* Payment Error Recovery */}
+      {paymentError && (
+        <div className="max-w-md mx-auto my-8">
+          <PaymentErrorRecovery
+            errorType={paymentError.type}
+            errorMessage={paymentError.message}
+            onRetry={() => {
+              setPaymentError(null);
+              handleDonation();
+            }}
+          />
+        </div>
+      )}
+
+      {/* Add Payment Button */}
+      {!paymentError && (
+        <div className="mt-8 text-center">
+          <button
+            onClick={handleDonation}
+            disabled={!selectedAmount && !isCustomSelected || !!error}
+            className={`inline-flex items-center px-6 py-3 border border-transparent text-base font-medium rounded-md shadow-sm text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 ${
+              (!selectedAmount && !isCustomSelected) || error
+                ? 'opacity-50 cursor-not-allowed'
+                : ''
+            }`}
+          >
+            Proceed to Donate
+            <ArrowRight className="ml-2 -mr-1 h-5 w-5" aria-hidden="true" />
+          </button>
+          {error && (
+            <p className="mt-2 text-sm text-red-600">{error}</p>
+          )}
+        </div>
       )}
 
       {/* Success Message */}

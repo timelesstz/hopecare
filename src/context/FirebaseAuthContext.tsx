@@ -1,8 +1,20 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import { 
+  createUserWithEmailAndPassword, 
+  signInWithEmailAndPassword, 
+  signOut, 
+  sendPasswordResetEmail,
+  GoogleAuthProvider,
+  signInWithPopup,
+  User as FirebaseUser,
+  updateProfile,
+  sendEmailVerification
+} from 'firebase/auth';
+import { doc, setDoc, getDoc, updateDoc, serverTimestamp } from 'firebase/firestore';
 import { z } from 'zod';
-import { supabase } from '../lib/supabase';
-import { securityManager } from '../middleware/security';
+import { auth, db } from '../lib/firebase';
 
+// Reuse the same user schema from the existing AuthContext
 export const userSchema = z.object({
   id: z.string().optional(),
   email: z.string().email('Invalid email address'),
@@ -24,7 +36,7 @@ interface AuthState {
   lastActivity: number;
 }
 
-interface AuthContextType {
+interface FirebaseAuthContextType {
   isAuthenticated: boolean;
   user: UserData | null;
   loading: boolean;
@@ -39,12 +51,12 @@ interface AuthContextType {
   socialAuth: (provider: 'google' | 'microsoft', role: string) => Promise<void>;
 }
 
-const AuthContext = createContext<AuthContextType | undefined>(undefined);
+const FirebaseAuthContext = createContext<FirebaseAuthContextType | undefined>(undefined);
 
-const STORAGE_KEY = 'user_auth';
+const STORAGE_KEY = 'firebase_user_auth';
 const INACTIVITY_TIMEOUT = 30 * 60 * 1000; // 30 minutes
 
-export function AuthProvider({ children }: { children: ReactNode }) {
+export function FirebaseAuthProvider({ children }: { children: ReactNode }) {
   const [state, setState] = useState<AuthState>({
     isAuthenticated: false,
     user: null,
@@ -54,75 +66,43 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   });
 
   useEffect(() => {
-    const initAuth = async () => {
-      try {
-        const { data: { session }, error: sessionError } = await supabase.auth.getSession();
-        if (sessionError) throw sessionError;
-
-        if (session) {
-          const { data: userData, error: userError } = await supabase
-            .from('users')
-            .select('*')
-            .eq('id', session.user.id)
-            .single();
-
-          if (userError) throw userError;
-
-          setState(prev => ({
-            ...prev,
-            isAuthenticated: true,
-            user: userData,
-            loading: false,
-            lastActivity: Date.now()
-          }));
-        } else {
-          setState(prev => ({
-            ...prev,
-            loading: false
-          }));
-        }
-      } catch (error) {
-        console.error('Auth initialization error:', error);
-        setState(prev => ({
-          ...prev,
-          error: 'Failed to initialize authentication',
-          loading: false
-        }));
-      }
-    };
-
-    initAuth();
-
-    const {
-      data: { subscription },
-    } = supabase.auth.onAuthStateChange(async (event, session) => {
-      if (event === 'SIGNED_IN' && session) {
+    const unsubscribe = auth.onAuthStateChanged(async (firebaseUser) => {
+      if (firebaseUser) {
         try {
-          const { data: userData, error: userError } = await supabase
-            .from('users')
-            .select('*')
-            .eq('id', session.user.id)
-            .single();
-
-          if (userError) throw userError;
-
-          setState(prev => ({
-            ...prev,
-            isAuthenticated: true,
-            user: userData,
-            loading: false,
-            error: null,
-            lastActivity: Date.now()
-          }));
+          // Get user profile from Firestore
+          const userDoc = await getDoc(doc(db, 'users', firebaseUser.uid));
+          
+          if (userDoc.exists()) {
+            const userData = userSchema.parse({
+              id: firebaseUser.uid,
+              ...userDoc.data()
+            });
+            
+            setState(prev => ({
+              ...prev,
+              isAuthenticated: true,
+              user: userData,
+              loading: false,
+              error: null,
+              lastActivity: Date.now()
+            }));
+          } else {
+            // User exists in Firebase Auth but not in Firestore
+            setState(prev => ({
+              ...prev,
+              loading: false,
+              error: 'User profile not found'
+            }));
+          }
         } catch (error) {
           console.error('Error fetching user data:', error);
           setState(prev => ({
             ...prev,
-            error: 'Failed to fetch user data',
-            loading: false
+            loading: false,
+            error: 'Failed to fetch user data'
           }));
         }
-      } else if (event === 'SIGNED_OUT') {
+      } else {
         setState(prev => ({
           ...prev,
           isAuthenticated: false,
@@ -132,9 +112,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
     });
 
-    return () => {
-      subscription.unsubscribe();
-    };
+    return () => unsubscribe();
   }, []);
 
   useEffect(() => {
@@ -167,8 +145,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     try {
       setState(prev => ({ ...prev, loading: true, error: null }));
       
+      console.log(`Login attempt for ${email} with role ${role || 'not specified'}`);
+      
       // Temporary local admin authentication for development
-      if (email === 'admin@hopecare.org' && password === 'admin123' && role === 'ADMIN') {
+      if (email === 'admin@hopecare.org' && password === 'admin@2025' && role === 'ADMIN') {
+        console.log('Using temporary admin authentication');
         const tempAdminUser: UserData = {
           id: 'temp-admin-id',
           email: 'admin@hopecare.org',
@@ -197,30 +178,73 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         return;
       }
 
-      const { data: { user }, error } = await supabase.auth.signInWithPassword({
-        email,
-        password
-      });
+      // For testing purposes - allow sample donor login
+      if (email === 'john.doe@example.com' && password === 'Donor2024!' && (role === 'DONOR' || !role)) {
+        console.log('Using sample donor authentication');
+        const tempDonorUser: UserData = {
+          id: 'temp-donor-id',
+          email: 'john.doe@example.com',
+          name: 'John Doe',
+          role: 'DONOR',
+          status: 'ACTIVE',
+          last_login: new Date().toISOString(),
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString()
+        };
 
-      if (error) throw error;
-      if (!user) throw new Error('No user returned from authentication');
+        setState(prev => ({
+          ...prev,
+          isAuthenticated: true,
+          user: tempDonorUser,
+          loading: false,
+          error: null,
+          lastActivity: Date.now()
+        }));
 
-      // Fetch user profile from our users table
-      const { data: profile, error: profileError } = await supabase
-        .from('users')
-        .select('*')
-        .eq('id', user.id)
-        .single();
+        localStorage.setItem(STORAGE_KEY, JSON.stringify({
+          user: tempDonorUser,
+          lastActivity: Date.now()
+        }));
 
-      if (profileError) throw profileError;
-      if (!profile) throw new Error('User profile not found');
+        return;
+      }
+
+      console.log('Attempting Firebase authentication');
+      const userCredential = await signInWithEmailAndPassword(auth, email, password);
+      const firebaseUser = userCredential.user;
+      
+      if (!firebaseUser) {
+        console.error('No user returned from authentication');
+        throw new Error('No user returned from authentication');
+      }
+
+      console.log('User authenticated, fetching profile');
+      // Fetch user profile from Firestore
+      const userDoc = await getDoc(doc(db, 'users', firebaseUser.uid));
+      
+      if (!userDoc.exists()) {
+        console.error('User profile not found');
+        throw new Error('User profile not found');
+      }
+      
+      const profile = userDoc.data();
 
       // Verify role if specified
       if (role && profile.role !== role) {
+        console.error(`Invalid role: expected ${role}, got ${profile.role}`);
         throw new Error(`Invalid credentials for ${role.toLowerCase()} login`);
       }
 
-      const userData = userSchema.parse(profile);
+      console.log('Login successful, updating state');
+      const userData = userSchema.parse({
+        id: firebaseUser.uid,
+        ...profile
+      });
+      
+      // Update last login time
+      await updateDoc(doc(db, 'users', firebaseUser.uid), {
+        last_login: new Date().toISOString(),
+      });
       
       setState(prev => ({
         ...prev,
@@ -250,55 +274,48 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const register = async (data: Omit<UserData, 'id' | 'last_login' | 'created_at' | 'updated_at'>) => {
     try {
+      setState(prev => ({ ...prev, loading: true, error: null }));
+      
       // Create auth user with email verification
-      const { data: authData, error: authError } = await supabase.auth.signUp({
-        email: data.email,
-        password: data.password,
-        options: {
-          data: {
-            name: data.name,
-            role: data.role,
-          },
-          emailRedirectTo: `${window.location.origin}/admin/verify-email`
-        }
+      const userCredential = await createUserWithEmailAndPassword(auth, data.email, data.password);
+      const firebaseUser = userCredential.user;
+      
+      // Update display name
+      await updateProfile(firebaseUser, {
+        displayName: data.name
       });
-
-      if (authError) throw authError;
-
-      // Create user profile in users table
-      const { error: profileError } = await supabase
-        .from('users')
-        .insert([{
-          id: authData.user?.id,
-          email: data.email,
-          name: data.name,
-          role: data.role,
-          status: 'INACTIVE', // Will be activated after email verification
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString()
-        }]);
-
-      if (profileError) throw profileError;
-
+      
+      // Send email verification
+      await sendEmailVerification(firebaseUser);
+      
+      // Create user profile in Firestore
+      await setDoc(doc(db, 'users', firebaseUser.uid), {
+        email: data.email,
+        name: data.name,
+        role: data.role,
+        status: 'INACTIVE', // Will be activated after email verification
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
+      });
+      
       // Log registration attempt
-      await supabase
-        .from('audit_logs')
-        .insert([{
-          user_id: authData.user?.id,
-          action: 'REGISTER',
-          details: {
-            email: data.email,
-            role: data.role,
-            timestamp: new Date().toISOString()
-          }
-        }]);
+      await setDoc(doc(db, 'audit_logs', `${firebaseUser.uid}_${Date.now()}`), {
+        user_id: firebaseUser.uid,
+        action: 'REGISTER',
+        details: {
+          email: data.email,
+          role: data.role,
+          timestamp: new Date().toISOString()
+        },
+        created_at: serverTimestamp()
+      });
 
       setState(prev => ({
         ...prev,
         error: null,
         loading: false
       }));
-
+      
     } catch (error) {
       console.error('Registration error:', error);
       setState(prev => ({
@@ -313,8 +330,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const logout = async () => {
     setState(prev => ({ ...prev, loading: true }));
     try {
-      const { error } = await supabase.auth.signOut();
-      if (error) throw error;
+      await signOut(auth);
       
       setState({
         isAuthenticated: false,
@@ -323,6 +339,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         error: null,
         lastActivity: Date.now()
       });
+      
+      localStorage.removeItem(STORAGE_KEY);
     } catch (error: any) {
       setState(prev => ({
         ...prev,
@@ -335,8 +353,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const resetPassword = async (email: string) => {
     setState(prev => ({ ...prev, loading: true, error: null }));
     try {
-      const { error } = await supabase.auth.resetPasswordForEmail(email);
-      if (error) throw error;
+      await sendPasswordResetEmail(auth, email);
       setState(prev => ({ ...prev, loading: false }));
     } catch (error: any) {
       setState(prev => ({
@@ -352,15 +369,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     try {
       if (!state.user?.id) throw new Error('No user logged in');
 
-      const { error } = await supabase
-        .from('users')
-        .update({
-          ...data,
-          updated_at: new Date().toISOString()
-        })
-        .eq('id', state.user.id);
-
-      if (error) throw error;
+      await updateDoc(doc(db, 'users', state.user.id), {
+        ...data,
+        updated_at: new Date().toISOString()
+      });
 
       setState(prev => ({
         ...prev,
@@ -382,47 +394,47 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const socialAuth = async (provider: 'google' | 'microsoft', role: string) => {
     try {
-      const { data, error } = await supabase.auth.signInWithOAuth({
-        provider,
-        options: {
-          redirectTo: `${window.location.origin}/admin/callback`,
-          queryParams: {
-            access_type: 'offline',
-            prompt: 'consent',
-          },
-          data: {
-            role,
-          }
-        }
-      });
-
-      if (error) throw error;
-
-      // Create or update user profile after successful OAuth
-      if (data.user) {
-        const { error: profileError } = await supabase
-          .from('users')
-          .upsert({
-            id: data.user.id,
-            email: data.user.email,
-            name: data.user.user_metadata.full_name,
-            role,
-            status: 'ACTIVE',
-            last_login: new Date().toISOString(),
-            updated_at: new Date().toISOString()
-          }, {
-            onConflict: 'id'
-          });
-
-        if (profileError) throw profileError;
+      setState(prev => ({ ...prev, loading: true, error: null }));
+      
+      let authProvider;
+      
+      if (provider === 'google') {
+        authProvider = new GoogleAuthProvider();
+      } else {
+        throw new Error('Provider not supported');
       }
-
+      
+      const result = await signInWithPopup(auth, authProvider);
+      const firebaseUser = result.user;
+      
+      // Check if user exists in Firestore
+      const userDoc = await getDoc(doc(db, 'users', firebaseUser.uid));
+      
+      if (!userDoc.exists()) {
+        // Create new user profile
+        await setDoc(doc(db, 'users', firebaseUser.uid), {
+          email: firebaseUser.email,
+          name: firebaseUser.displayName || 'User',
+          role: role,
+          status: 'ACTIVE',
+          last_login: new Date().toISOString(),
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString()
+        });
+      } else {
+        // Update existing user
+        await updateDoc(doc(db, 'users', firebaseUser.uid), {
+          last_login: new Date().toISOString(),
+          updated_at: new Date().toISOString()
+        });
+      }
+      
       setState(prev => ({
         ...prev,
         error: null,
         loading: false
       }));
-
+      
     } catch (error) {
       console.error('Social auth error:', error);
       setState(prev => ({
@@ -443,7 +455,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }
 
   return (
-    <AuthContext.Provider
+    <FirebaseAuthContext.Provider
       value={{
         ...state,
         login,
@@ -456,14 +468,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }}
     >
       {children}
-    </AuthContext.Provider>
+    </FirebaseAuthContext.Provider>
   );
 }
 
-export function useAuth() {
-  const context = useContext(AuthContext);
+export function useFirebaseAuth() {
+  const context = useContext(FirebaseAuthContext);
   if (context === undefined) {
-    throw new Error('useAuth must be used within an AuthProvider');
+    throw new Error('useFirebaseAuth must be used within a FirebaseAuthProvider');
   }
   return context;
-}
+} 

@@ -10,7 +10,7 @@ const AdminLogin: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
-  const { setUser } = useAuth();
+  const { setUser } = useFirebaseAuth();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -40,7 +40,7 @@ const AdminLogin: React.FC = () => {
       if (userError) throw userError;
 
       if (!userData || userData.role !== 'admin') {
-        await supabase.auth.signOut(); // Sign out if not admin
+        await signOut(auth); // Sign out if not admin
         throw new Error('Unauthorized access. Admin privileges required.');
       }
 
