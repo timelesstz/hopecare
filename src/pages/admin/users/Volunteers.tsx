@@ -169,33 +169,17 @@ const VolunteersPage: React.FC = () => {
       if (err instanceof Error && err.message.includes('requires an index')) {
         const indexUrl = err.message.match(/https:\/\/console\.firebase\.google\.com[^\s]*/)?.[0];
         if (indexUrl) {
-          setError(
-            <>
-              This query requires a Firestore index. Please{' '}
-              <a 
-                href={indexUrl} 
-                target="_blank" 
-                rel="noopener noreferrer"
-                className="text-blue-600 underline"
-              >
-                click here
-              </a>{' '}
-              to create it.
-            </>
-          );
+          setError(`This query requires a Firestore index. Please create it using this URL: ${indexUrl}`);
+          
           toast.error(
-            <div>
-              Missing Firestore index. 
-              <a 
-                href={indexUrl}
-                target="_blank" 
-                rel="noopener noreferrer"
-                className="ml-2 underline text-blue-600"
-              >
-                Create it here
-              </a>
-            </div>,
-            { duration: 10000 }
+            `Missing Firestore index. Create it here: ${indexUrl}`,
+            { 
+              duration: 10000,
+              style: {
+                maxWidth: '500px',
+                wordBreak: 'break-word'
+              }
+            }
           );
           return;
         }

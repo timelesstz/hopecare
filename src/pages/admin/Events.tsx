@@ -127,19 +127,17 @@ const EventsPage: React.FC = () => {
       if (isMissingCollectionError(err)) {
         setError('Failed to fetch events. The events collection might not exist.');
         
-        // Create a button to redirect to dashboard to create the collection
+        // Create a message to redirect to dashboard to create the collection
         toast.error(
-          <div>
-            Events collection might not exist. 
-            <button 
-              onClick={() => window.location.href = '/admin/dashboard'} 
-              className="ml-2 underline text-blue-600"
-            >
-              Go to Dashboard
-            </button>
-          </div>,
+          'Events collection might not exist. Go to Dashboard to create it.',
           { duration: 5000 }
         );
+        
+        // After a short delay, redirect to dashboard
+        setTimeout(() => {
+          window.location.href = '/admin/dashboard';
+        }, 3000);
+        
         return;
       }
       
@@ -147,33 +145,17 @@ const EventsPage: React.FC = () => {
       if (err instanceof Error && err.message.includes('requires an index')) {
         const indexUrl = err.message.match(/https:\/\/console\.firebase\.google\.com[^\s]*/)?.[0];
         if (indexUrl) {
-          setError(
-            <>
-              This query requires a Firestore index. Please{' '}
-              <a 
-                href={indexUrl} 
-                target="_blank" 
-                rel="noopener noreferrer"
-                className="text-blue-600 underline"
-              >
-                click here
-              </a>{' '}
-              to create it.
-            </>
-          );
+          setError(`This query requires a Firestore index. Please create it using this URL: ${indexUrl}`);
+          
           toast.error(
-            <div>
-              Missing Firestore index. 
-              <a 
-                href={indexUrl}
-                target="_blank" 
-                rel="noopener noreferrer"
-                className="ml-2 underline text-blue-600"
-              >
-                Create it here
-              </a>
-            </div>,
-            { duration: 10000 }
+            `Missing Firestore index. Create it here: ${indexUrl}`,
+            { 
+              duration: 10000,
+              style: {
+                maxWidth: '500px',
+                wordBreak: 'break-word'
+              }
+            }
           );
           return;
         }

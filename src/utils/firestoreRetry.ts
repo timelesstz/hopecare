@@ -81,18 +81,14 @@ export async function safeFirestoreOperation<T>(
             const indexUrl = extractIndexUrl(error);
             if (indexUrl) {
               toast.error(
-                <div>
-                  Missing Firestore index. 
-                  <a 
-                    href={indexUrl}
-                    target="_blank" 
-                    rel="noopener noreferrer"
-                    className="ml-2 underline text-blue-600"
-                  >
-                    Create it here
-                  </a>
-                </div>,
-                { duration: 10000 }
+                `Missing Firestore index. Create it here: ${indexUrl}`,
+                { 
+                  duration: 10000,
+                  style: {
+                    maxWidth: '500px',
+                    wordBreak: 'break-word'
+                  }
+                }
               );
             } else {
               toast.error('This query requires a Firestore index. Please check the console for details.');
