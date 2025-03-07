@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-// Supabase client import removed - using Firebase instead
-import { db, auth } from '../lib/firebase';
+import { confirmPasswordReset } from 'firebase/auth';
+import { auth } from '../lib/firebase';
 import { Box, Paper, Typography, TextField, Button, Alert, Container } from '@mui/material';
 import { useForm } from 'react-hook-form';
 import { z } from 'zod';
@@ -32,10 +32,10 @@ const ResetPassword = () => {
     resolver: zodResolver(passwordSchema)
   });
 
-  // Check if we have a valid hash in the URL
+  // Check if we have a valid action code in the URL
   useEffect(() => {
-    const hash = searchParams.get('hash');
-    if (!hash) {
+    const actionCode = searchParams.get('oobCode');
+    if (!actionCode) {
       setMessage({
         type: 'error',
         text: 'Invalid password reset link. Please request a new password reset.'
@@ -48,20 +48,14 @@ const ResetPassword = () => {
       setLoading(true);
       setMessage(null);
 
-      // Get the hash from the URL
-      const hash = searchParams.get('hash');
-      if (!hash) {
+      // Get the action code from the URL
+      const actionCode = searchParams.get('oobCode');
+      if (!actionCode) {
         throw new Error('Invalid password reset link');
       }
 
-      // Update the user's password
-      const { error } = await supabase.auth.updateUser({
-        password: data.password
-      });
-
-      if (error) {
-        throw error;
-      }
+      // Update the user's password using Firebase
+      await confirmPasswordReset(auth, actionCode, data.password);
 
       setMessage({
         type: 'success',

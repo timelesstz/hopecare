@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useAuth } from '../contexts/AuthContext';
+import { useFirebaseAuth } from '../context/FirebaseAuthContext';
 import { Box, Paper, Typography, Alert, Button, Container, Grid, AlertTitle } from '@mui/material';
 import VolunteerLoginForm from '../components/auth/VolunteerLoginForm';
 import VolunteerRegistrationForm from '../components/auth/VolunteerRegistrationForm';
@@ -12,7 +12,7 @@ const VolunteerAuth = () => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const navigate = useNavigate();
-  const { isAuthenticated, login, register, clearError } = useAuth();
+  const { isAuthenticated, login, register, clearError } = useFirebaseAuth();
 
   // Redirect if already authenticated
   useEffect(() => {

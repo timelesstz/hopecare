@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
-// Supabase client import removed - using Firebase instead
-import { db, auth } from '../lib/firebase';
+import { sendPasswordResetEmail } from 'firebase/auth';
+import { auth } from '../lib/firebase';
 import { Box, Paper, Typography, TextField, Button, Alert, Container } from '@mui/material';
 import { useForm } from 'react-hook-form';
 import { z } from 'zod';
@@ -26,13 +26,9 @@ const ForgotPassword = () => {
       setLoading(true);
       setMessage(null);
 
-      const { error } = await supabase.auth.resetPasswordForEmail(data.email, {
-        redirectTo: `${window.location.origin}/reset-password`,
+      await sendPasswordResetEmail(auth, data.email, {
+        url: `${window.location.origin}/login`,
       });
-
-      if (error) {
-        throw error;
-      }
 
       setMessage({
         type: 'success',

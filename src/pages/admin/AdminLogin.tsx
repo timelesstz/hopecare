@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { supabase } from '../../lib/supabaseClient';
-import { useAuth } from '../../hooks/useAuth';
+import { auth } from '../../lib/firebase';
+import { useFirebaseAuth } from '../../context/FirebaseAuthContext';
+import { signOut } from 'firebase/auth';
 import { LockClosedIcon } from '@heroicons/react/24/outline';
 
 const AdminLogin: React.FC = () => {
@@ -10,7 +11,7 @@ const AdminLogin: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
-  const { setUser } = useFirebaseAuth();
+  const { login, checkAdminStatus } = useFirebaseAuth();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -18,34 +19,22 @@ const AdminLogin: React.FC = () => {
     setLoading(true);
 
     try {
-      // First, try to sign in
-      const { data: signInData, error: signInError } = await supabase.auth.signInWithPassword({
-        email,
-        password,
-      });
-
-      if (signInError) throw signInError;
-
-      if (!signInData.user) {
-        throw new Error('No user data returned');
+      // Sign in with Firebase
+      const success = await login(email, password);
+      
+      if (!success) {
+        throw new Error('Login failed');
       }
 
       // Check if the user has admin role
-      const { data: userData, error: userError } = await supabase
-        .from('users')
-        .select('role')
-        .eq('id', signInData.user.id)
-        .single();
-
-      if (userError) throw userError;
-
-      if (!userData || userData.role !== 'admin') {
+      const isAdmin = await checkAdminStatus();
+      
+      if (!isAdmin) {
         await signOut(auth); // Sign out if not admin
         throw new Error('Unauthorized access. Admin privileges required.');
       }
 
-      // Set user in context and redirect to admin dashboard
-      setUser(signInData.user);
+      // Redirect to admin dashboard
       navigate('/admin/dashboard');
     } catch (err) {
       console.error('Login error:', err);
