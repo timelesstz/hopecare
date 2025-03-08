@@ -3,7 +3,7 @@ import { Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import PageLayout from './components/PageLayout';
 import { useFirebaseAuth } from './context/FirebaseAuthContext';
 import FirebaseProtectedRoute from './components/auth/FirebaseProtectedRoute';
-import AdminLayout from './components/admin/AdminLayout';
+import AdminLayout from './components/layouts/AdminLayout';
 import ProtectedRoute from './components/ProtectedRoute';
 import LoadingSpinner from './components/ui/LoadingSpinner';
 
