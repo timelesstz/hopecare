@@ -8,6 +8,7 @@ interface FirebaseErrorBoundaryProps {
 const FirebaseErrorBoundary: React.FC<FirebaseErrorBoundaryProps> = ({ children }) => {
   const [hasError, setHasError] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   useEffect(() => {
     // Check if Firebase is properly initialized
@@ -16,10 +17,32 @@ const FirebaseErrorBoundary: React.FC<FirebaseErrorBoundaryProps> = ({ children 
         // If app is an empty object (our fallback), it won't have these properties
         if (!app.name || !app.options) {
           setHasError(true);
+          setErrorMessage('Firebase initialization failed: Missing configuration');
         }
+        
+        // Check for console errors related to Firebase
+        const originalConsoleError = console.error;
+        console.error = (...args) => {
+          const errorString = args.join(' ');
+          if (
+            errorString.includes('Firebase') && 
+            (errorString.includes('already exists') || 
+             errorString.includes('initialization failed'))
+          ) {
+            setHasError(true);
+            setErrorMessage('Firebase initialization error: Duplicate initialization detected');
+          }
+          originalConsoleError(...args);
+        };
+        
+        // Restore original console.error after a short delay
+        setTimeout(() => {
+          console.error = originalConsoleError;
+        }, 2000);
       } catch (error) {
         console.error('Error checking Firebase initialization:', error);
         setHasError(true);
+        setErrorMessage(error instanceof Error ? error.message : 'Unknown Firebase initialization error');
       } finally {
         setIsLoading(false);
       }
@@ -49,6 +72,11 @@ const FirebaseErrorBoundary: React.FC<FirebaseErrorBoundaryProps> = ({ children 
             </svg>
           </div>
           <h2 className="mt-4 text-xl font-semibold text-center text-gray-800">Application Error</h2>
+          {errorMessage && (
+            <p className="mt-2 text-sm text-center text-red-600">
+              {errorMessage}
+            </p>
+          )}
           <p className="mt-2 text-center text-gray-600">
             We're having trouble connecting to our services. This could be due to:
           </p>
