@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import { 
   Users, 
@@ -19,6 +19,7 @@ import { collection, getDocs, query, where, orderBy, limit, Timestamp, DocumentD
 import { db } from '../../lib/firebase';
 import { useFirebaseAuth } from '../../context/FirebaseAuthContext';
 import { toast } from 'react-hot-toast';
+import LoadingSpinner from '../../components/ui/LoadingSpinner';
 
 // Chart components (you can replace with your preferred chart library)
 import { 
@@ -220,6 +221,12 @@ const AdminDashboard: React.FC = () => {
   const maxRetries = 3;
   const [missingOptionalCollections, setMissingOptionalCollections] = useState<string[]>([]);
 
+  // Add a cache for collection existence checks
+  const collectionExistsCache = new Map<string, boolean>();
+
+  // Cache for formatted timestamps to avoid redundant processing
+  const timestampCache = new Map<string, string>();
+
   useEffect(() => {
     fetchDashboardData();
   }, []);
@@ -303,14 +310,14 @@ const AdminDashboard: React.FC = () => {
         const sampleEvent = {
           title: 'Welcome to HopeCare Events',
           description: 'This is a sample event to help you get started with the events feature. You can edit or delete this event, or create new ones from the Events page.',
-          date: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000), // One week from now
+          date: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(), // One week from now
           location: 'HopeCare Community Center',
           organizer: 'HopeCare Team',
           status: 'upcoming',
           capacity: 50,
           registered: 0,
-          created_at: serverTimestamp(),
-          updated_at: serverTimestamp(),
+          created_at: new Date().toISOString(), // Use ISO string instead of serverTimestamp for initial creation
+          updated_at: new Date().toISOString(),
           image_url: 'https://source.unsplash.com/random/800x600/?charity',
           tags: ['sample', 'welcome', 'community']
         };
@@ -323,27 +330,27 @@ const AdminDashboard: React.FC = () => {
           const secondEvent = {
             title: 'Volunteer Orientation',
             description: 'Join us for an orientation session for new volunteers. Learn about our mission, programs, and how you can make a difference.',
-            date: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000), // Two weeks from now
+            date: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString(), // Two weeks from now
             location: 'HopeCare Training Room',
             organizer: 'Volunteer Coordinator',
             status: 'upcoming',
             capacity: 30,
             registered: 5,
-            created_at: serverTimestamp(),
-            updated_at: serverTimestamp(),
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
             image_url: 'https://source.unsplash.com/random/800x600/?volunteer',
             tags: ['volunteer', 'orientation', 'training']
           };
           
           await addDoc(collectionRef, secondEvent);
           console.log(`Added second sample event to ${collectionName} collection`);
+          return true;
         } catch (addError) {
           console.error(`Error adding sample event document:`, addError);
           throw new Error(`Failed to add sample event document: ${addError instanceof Error ? addError.message : 'Unknown error'}`);
         }
       } else if (collectionName === 'settings') {
         const systemSettings = {
-          id: 'system_settings',
           siteName: 'HopeCare',
           siteDescription: 'Empowering communities through hope and care',
           contactEmail: 'contact@hopecare.org',
@@ -360,13 +367,14 @@ const AdminDashboard: React.FC = () => {
           defaultLanguage: 'en',
           termsUrl: '/terms',
           privacyUrl: '/privacy',
-          lastUpdated: serverTimestamp(),
+          lastUpdated: new Date().toISOString(),
           updatedBy: user?.email || 'system'
         };
         
         try {
           docRef = await addDoc(collectionRef, systemSettings);
           console.log(`Created ${collectionName} collection with system settings, doc ID: ${docRef.id}`);
+          return true;
         } catch (addError) {
           console.error(`Error adding settings document:`, addError);
           throw new Error(`Failed to add settings document: ${addError instanceof Error ? addError.message : 'Unknown error'}`);
@@ -375,27 +383,19 @@ const AdminDashboard: React.FC = () => {
         // Add a placeholder document for other collections
         const placeholderDoc = {
           _placeholder: true,
-          _createdAt: serverTimestamp(),
+          _createdAt: new Date().toISOString(),
           _description: `This is a placeholder document to create the ${collectionName} collection.`
         };
         
         try {
           docRef = await addDoc(collectionRef, placeholderDoc);
           console.log(`Created ${collectionName} collection with a placeholder document, doc ID: ${docRef.id}`);
+          return true;
         } catch (addError) {
           console.error(`Error adding placeholder document:`, addError);
           throw new Error(`Failed to add placeholder document: ${addError instanceof Error ? addError.message : 'Unknown error'}`);
         }
       }
-      
-      // Verify the collection was created
-      const verifyExists = await checkCollectionExists(collectionName);
-      if (!verifyExists) {
-        console.error(`Failed to verify creation of collection ${collectionName}`);
-        return false;
-      }
-      
-      return true;
     } catch (error) {
       console.error(`Error creating ${collectionName} collection:`, error);
       
@@ -414,11 +414,13 @@ const AdminDashboard: React.FC = () => {
   // Function to handle creating missing collections
   const handleCreateMissingCollections = async () => {
     setLoading(true);
+    setError(null);
     
     try {
       // Create each missing collection one by one for better error handling
       const createdCollections = [];
       const failedCollections = [];
+      const errorDetails = {};
       
       for (const collectionName of missingOptionalCollections) {
         try {
@@ -430,11 +432,15 @@ const AdminDashboard: React.FC = () => {
             console.log(`Successfully created collection: ${collectionName}`);
           } else {
             failedCollections.push(collectionName);
+            errorDetails[collectionName] = 'Failed to create collection';
             console.error(`Failed to create collection: ${collectionName}`);
           }
         } catch (collectionError) {
           console.error(`Error creating collection ${collectionName}:`, collectionError);
           failedCollections.push(collectionName);
+          errorDetails[collectionName] = collectionError instanceof Error 
+            ? collectionError.message 
+            : 'Unknown error';
         }
       }
       
@@ -455,13 +461,26 @@ const AdminDashboard: React.FC = () => {
       
       if (failedCollections.length > 0) {
         console.error(`Failed to create collections: ${failedCollections.join(', ')}`);
-        setError(`Failed to create some collections: ${failedCollections.join(', ')}`);
-        toast.error(`Failed to create some collections: ${failedCollections.join(', ')}`);
+        console.error('Error details:', errorDetails);
+        
+        // Create a more detailed error message
+        const errorMessage = `Failed to create collections: ${failedCollections.join(', ')}. ${
+          Object.entries(errorDetails)
+            .map(([collection, error]) => `${collection}: ${error}`)
+            .join('; ')
+        }`;
+        
+        setError(errorMessage);
+        toast.error(errorMessage);
       }
     } catch (error) {
       console.error('Error creating collections:', error);
-      setError('Failed to create missing collections');
-      toast.error('Failed to create missing collections');
+      const errorMessage = error instanceof Error 
+        ? `Failed to create missing collections: ${error.message}` 
+        : 'Failed to create missing collections';
+      
+      setError(errorMessage);
+      toast.error(errorMessage);
     } finally {
       setLoading(false);
     }
@@ -481,268 +500,205 @@ const AdminDashboard: React.FC = () => {
       console.log('Checking required collections...');
       // Check required collections
       const requiredChecks = await Promise.all(
-        requiredCollections.map(async (collectionName) => ({
-          name: collectionName,
-          exists: await checkCollectionExists(collectionName)
-        }))
+        requiredCollections.map(async (collectionName) => {
+          // Check cache first
+          if (collectionExistsCache.has(collectionName)) {
+            return {
+              name: collectionName,
+              exists: collectionExistsCache.get(collectionName)
+            };
+          }
+          
+          // If not in cache, check Firestore
+          const exists = await checkCollectionExists(collectionName);
+          collectionExistsCache.set(collectionName, exists);
+          
+          return {
+            name: collectionName,
+            exists
+          };
+        })
       );
       
       const missingRequired = requiredChecks.filter(check => !check.exists);
       if (missingRequired.length > 0) {
         const missingNames = missingRequired.map(c => c.name).join(', ');
         console.error(`Missing required collections: ${missingNames}`);
-        throw new Error(`Missing required collections: ${missingNames}`);
+        throw new Error(`Missing required collections: ${missingNames}. Please ensure these collections exist in your Firestore database.`);
       }
       
       console.log('Checking optional collections...');
       // Check optional collections
       const optionalChecks = await Promise.all(
-        optionalCollections.map(async (collectionName) => ({
-          name: collectionName,
-          exists: await checkCollectionExists(collectionName)
-        }))
+        optionalCollections.map(async (collectionName) => {
+          // Check cache first
+          if (collectionExistsCache.has(collectionName)) {
+            return {
+              name: collectionName,
+              exists: collectionExistsCache.get(collectionName)
+            };
+          }
+          
+          // If not in cache, check Firestore
+          const exists = await checkCollectionExists(collectionName);
+          collectionExistsCache.set(collectionName, exists);
+          
+          return {
+            name: collectionName,
+            exists
+          };
+        })
       );
       
       // Log missing optional collections but don't throw an error
       const missingOptional = optionalChecks.filter(check => !check.exists);
       if (missingOptional.length > 0) {
-        const missingNames = missingOptional.map(c => c.name).join(', ');
-        console.warn(`Missing optional collections: ${missingNames}`);
-        setMissingOptionalCollections(missingOptional.map(c => c.name));
+        const missingNames = missingOptional.map(c => c.name);
+        console.log(`Missing optional collections: ${missingNames.join(', ')}`);
+        setMissingOptionalCollections(missingNames);
       } else {
         setMissingOptionalCollections([]);
       }
       
-      let totalUsers = 0;
-      let adminCount = 0;
-      let donorCount = 0;
-      let volunteerCount = 0;
-      let totalDonations = 0;
-      let totalDonationAmount = 0;
-      let recentDonations: any[] = [];
-      let totalVolunteers = 0;
-      let recentVolunteers: any[] = [];
-      let totalEvents = 0;
-      let donationsByMonth: { name: string; amount: number }[] = [];
-      let usersByRole: { name: string; value: number }[] = [];
+      // Continue with fetching data from existing collections
+      // Fetch users with limit
+      console.log('Fetching users...');
+      const usersRef = collection(db, 'users');
+      const usersQuery = query(usersRef, limit(100)); // Limit to 100 users for better performance
+      const usersSnapshot = await getDocs(usersQuery);
+      const usersData = usersSnapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      }));
       
-      // Fetch total users
-      try {
-        const usersQuery = query(collection(db, 'users'));
-        const usersSnapshot = await getDocs(usersQuery);
-        totalUsers = usersSnapshot.size;
-        
-        // Fetch users by role for pie chart
-        adminCount = usersSnapshot.docs.filter(doc => {
-          const data = doc.data();
-          return data && data.role === 'ADMIN';
-        }).length;
-        
-        donorCount = usersSnapshot.docs.filter(doc => {
-          const data = doc.data();
-          return data && data.role === 'DONOR';
-        }).length;
-        
-        volunteerCount = usersSnapshot.docs.filter(doc => {
-          const data = doc.data();
-          return data && data.role === 'VOLUNTEER';
-        }).length;
-        
-        usersByRole = [
-          { name: 'Admins', value: adminCount },
-          { name: 'Donors', value: donorCount },
-          { name: 'Volunteers', value: volunteerCount }
-        ];
-      } catch (userError) {
-        console.error('Error fetching user data:', userError);
-        throw new Error(`Failed to fetch user data: ${userError instanceof Error ? userError.message : 'Unknown error'}`);
-      }
+      // Fetch recent donations with limit
+      console.log('Fetching donations...');
+      const donationsRef = collection(db, 'donations');
+      const donationsQuery = query(
+        donationsRef,
+        orderBy('created_at', 'desc'),
+        limit(50) // Limit to 50 recent donations for better performance
+      );
+      const donationsSnapshot = await getDocs(donationsQuery);
+      const donationsData = donationsSnapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      }));
       
-      // Fetch donations data
-      try {
-        const donationsQuery = query(collection(db, 'donations'));
-        const donationsSnapshot = await getDocs(donationsQuery);
-        totalDonations = donationsSnapshot.size;
-        
-        // Calculate total donation amount
-        donationsSnapshot.forEach(doc => {
-          try {
-            const data = doc.data();
-            if (data && data.amount) {
-              const amount = Number(data.amount);
-              if (!isNaN(amount)) {
-                totalDonationAmount += amount;
-              }
-            }
-          } catch (err) {
-            console.warn(`Error processing donation amount for doc ${doc.id}:`, err);
-          }
-        });
-        
-        // Generate donations by month data
-        donationsByMonth = generateDonationsByMonth(donationsSnapshot.docs);
-        
-        // Fetch recent donations
+      // Fetch events if the collection exists
+      let eventsData = [];
+      if (optionalChecks.find(c => c.name === 'events')?.exists) {
+        console.log('Fetching events...');
         try {
-          const recentDonationsQuery = query(
-            collection(db, 'donations'),
-            orderBy('created_at', 'desc'),
-            limit(5)
+          const eventsRef = collection(db, 'events');
+          const eventsQuery = query(
+            eventsRef,
+            orderBy('date', 'asc'),
+            limit(10) // Limit to 10 upcoming events
           );
-          const recentDonationsSnapshot = await getDocs(recentDonationsQuery);
-          recentDonations = recentDonationsSnapshot.docs.map(doc => {
-            try {
-              const data = doc.data();
-              return {
-                id: doc.id,
-                ...data,
-                created_at: formatTimestamp(data.created_at),
-                amount: data.amount ? `$${Number(data.amount).toLocaleString()}` : 'N/A',
-                donor_name: data.donor_name || 'Anonymous',
-                status: data.status || 'completed'
-              };
-            } catch (err) {
-              console.warn(`Error processing recent donation ${doc.id}:`, err);
-              return {
-                id: doc.id,
-                created_at: 'Invalid date',
-                amount: 'N/A',
-                donor_name: 'Error',
-                status: 'error'
-              };
-            }
-          });
-        } catch (recentDonationsError) {
-          console.error('Error fetching recent donations:', recentDonationsError);
-          // Don't throw, just set empty array
-          recentDonations = [];
+          const eventsSnapshot = await getDocs(eventsQuery);
+          eventsData = eventsSnapshot.docs.map(doc => ({
+            id: doc.id,
+            ...doc.data()
+          }));
+        } catch (eventsError) {
+          console.error('Error fetching events:', eventsError);
+          // Don't fail the entire dashboard for this
         }
-      } catch (donationError) {
-        console.error('Error fetching donation data:', donationError);
-        throw new Error(`Failed to fetch donation data: ${donationError instanceof Error ? donationError.message : 'Unknown error'}`);
       }
       
-      // Fetch volunteer data
-      try {
-        // Fetch recent volunteers
+      // Fetch settings if the collection exists
+      let settingsData = null;
+      if (optionalChecks.find(c => c.name === 'settings')?.exists) {
+        console.log('Fetching settings...');
         try {
-          const recentVolunteersQuery = query(
-            collection(db, 'users'),
-            where('role', '==', 'VOLUNTEER'),
-            orderBy('created_at', 'desc'),
-            limit(5)
-          );
-          const recentVolunteersSnapshot = await getDocs(recentVolunteersQuery);
-          recentVolunteers = recentVolunteersSnapshot.docs.map(doc => {
-            try {
-              const data = doc.data();
-              return {
-                id: doc.id,
-                ...data,
-                created_at: formatTimestamp(data.created_at),
-                name: data.name || data.displayName || 'Unknown Volunteer',
-                email: data.email || 'No email',
-                status: data.status || 'ACTIVE'
-              };
-            } catch (err) {
-              console.warn(`Error processing recent volunteer ${doc.id}:`, err);
-              return {
-                id: doc.id,
-                created_at: 'Invalid date',
-                name: 'Error',
-                email: 'Error',
-                status: 'error'
-              };
-            }
-          });
-        } catch (recentVolunteersError) {
-          console.error('Error fetching recent volunteers:', recentVolunteersError);
-          // Don't throw, just set empty array
-          recentVolunteers = [];
-        }
-      } catch (volunteerError) {
-        console.error('Error fetching volunteer data:', volunteerError);
-        // Don't throw an error for volunteer data, just log it
-        console.warn(`Failed to fetch volunteer data: ${volunteerError instanceof Error ? volunteerError.message : 'Unknown error'}`);
-      }
-      
-      // Fetch events data
-      try {
-        // Check if events collection exists before querying
-        const eventsExists = optionalChecks.find(check => check.name === 'events')?.exists || false;
-        
-        if (eventsExists) {
-          try {
-            const eventsQuery = query(collection(db, 'events'));
-            const eventsSnapshot = await getDocs(eventsQuery);
-            totalEvents = eventsSnapshot.size;
-          } catch (eventsQueryError) {
-            console.error('Error querying events collection:', eventsQueryError);
-            totalEvents = 0;
+          const settingsRef = collection(db, 'settings');
+          const settingsSnapshot = await getDocs(query(settingsRef, limit(1)));
+          if (!settingsSnapshot.empty) {
+            settingsData = {
+              id: settingsSnapshot.docs[0].id,
+              ...settingsSnapshot.docs[0].data()
+            };
           }
-        } else {
-          console.log('Events collection does not exist, skipping events data fetch');
-          totalEvents = 0;
-        }
-      } catch (eventError) {
-        console.error('Error fetching event data:', eventError);
-        // Don't throw an error for optional collections
-        console.warn(`Failed to fetch event data: ${eventError instanceof Error ? eventError.message : 'Unknown error'}`);
-        totalEvents = 0;
-      }
-      
-      // Calculate donation change percentage (comparing current month to previous month)
-      let donationChange = 0;
-      if (donationsByMonth.length >= 2) {
-        const currentMonth = donationsByMonth[donationsByMonth.length - 1].amount;
-        const previousMonth = donationsByMonth[donationsByMonth.length - 2].amount;
-        if (previousMonth > 0) {
-          donationChange = Math.round(((currentMonth - previousMonth) / previousMonth) * 100);
+        } catch (settingsError) {
+          console.error('Error fetching settings:', settingsError);
+          // Don't fail the entire dashboard for this
         }
       }
       
-      // Calculate donor change percentage (placeholder - you can implement actual logic)
-      const donorChange = 5.2;
+      // Process the data
+      console.log('Processing data...');
       
-      // Calculate volunteer change percentage (placeholder - you can implement actual logic)
-      const volunteerChange = 3.8;
+      // Calculate total donations
+      const totalDonations = donationsData.reduce((sum, donation) => {
+        const amount = parseFloat(donation.amount) || 0;
+        return sum + amount;
+      }, 0);
       
-      // Calculate event change percentage (placeholder - you can implement actual logic)
-      const eventChange = -2.1;
+      // Count active users
+      const activeUsers = usersData.filter(user => 
+        user.status === 'ACTIVE' || user.status === 'active'
+      ).length;
       
+      // Count upcoming events
+      const upcomingEvents = eventsData.filter(event => {
+        const eventDate = new Date(event.date);
+        return eventDate > new Date();
+      }).length;
+      
+      // Generate donation by month data for charts
+      const donationsByMonth = generateDonationsByMonth(donationsData);
+      
+      // Update state with the fetched data
       setStats({
-        totalUsers,
-        totalDonations: totalDonationAmount,
-        totalDonors: donorCount,
-        totalVolunteers,
-        totalEvents,
-        donationChange,
-        donorChange,
-        volunteerChange,
-        eventChange,
-        recentDonations,
-        recentVolunteers,
+        totalUsers: usersData.length,
+        totalDonations: totalDonations,
+        totalDonors: usersData.filter(u => u.role === 'DONOR').length,
+        totalVolunteers: usersData.filter(u => u.role === 'VOLUNTEER').length,
+        totalEvents: eventsData.length,
+        donationChange: 0,
+        donorChange: 0,
+        volunteerChange: 0,
+        eventChange: 0,
+        recentDonations: [],
+        recentVolunteers: [],
         donationsByMonth,
-        usersByRole
+        usersByRole: [
+          { name: 'Admins', value: usersData.filter(u => u.role === 'ADMIN').length },
+          { name: 'Donors', value: usersData.filter(u => u.role === 'DONOR').length },
+          { name: 'Volunteers', value: usersData.filter(u => u.role === 'VOLUNTEER').length }
+        ]
       });
-    } catch (err) {
-      console.error('Error fetching dashboard data:', err);
       
-      // Provide more specific error messages based on the error type
-      if (err instanceof Error) {
-        // Check for Firebase-specific errors
-        if (err.message.includes('permission-denied')) {
-          setError('You do not have permission to access this data. Please check your account permissions.');
-        } else if (err.message.includes('not-found')) {
-          setError('Some required data collections were not found. Please ensure your database is properly set up.');
-        } else if (err.message.includes('network')) {
-          setError('Network error. Please check your internet connection and try again.');
-        } else {
-          // Use the actual error message for more specific information
-          setError(`Error: ${err.message}`);
-        }
-      } else {
-        setError('Failed to load dashboard data. Please try again later.');
+      // Also update the dashboardData state
+      setDashboardData({
+        users: usersData,
+        donations: donationsData,
+        events: eventsData,
+        settings: settingsData,
+        totalDonations,
+        activeUsers,
+        upcomingEvents,
+        donationsByMonth,
+        recentActivity: []
+      });
+      
+      console.log('Dashboard data fetched successfully');
+    } catch (error) {
+      console.error('Error fetching dashboard data:', error);
+      setError(error instanceof Error ? error.message : 'Failed to load dashboard data');
+      
+      // Increment retry count
+      setRetryCount(prev => prev + 1);
+      
+      // Set up automatic retry if under max retries
+      if (retryCount < maxRetries - 1) {
+        console.log(`Automatically retrying (${retryCount + 1}/${maxRetries})...`);
+        const retryTimeout = setTimeout(() => {
+          fetchDashboardData();
+        }, 3000);
+        
+        return () => clearTimeout(retryTimeout);
       }
     } finally {
       setLoading(false);
@@ -752,54 +708,77 @@ const AdminDashboard: React.FC = () => {
   const generateDonationsByMonth = (donations: DocumentData[]) => {
     const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
     const currentDate = new Date();
-    const monthlyData: { name: string; amount: number }[] = [];
     
-    // Generate data for the last 6 months
+    // Create a map to store monthly totals
+    const monthlyTotals = new Map<string, number>();
+    
+    // Initialize the map with zeros for the last 6 months
     for (let i = 5; i >= 0; i--) {
       const monthIndex = (currentDate.getMonth() - i + 12) % 12;
       const year = currentDate.getFullYear() - (currentDate.getMonth() < i ? 1 : 0);
+      const monthKey = `${monthIndex}-${year}`;
       const monthName = `${months[monthIndex]} ${year}`;
       
-      // Calculate total donations for this month
-      let monthlyTotal = 0;
-      donations.forEach(donation => {
-        try {
-          const donationData = donation.data();
-          if (!donationData || !donationData.created_at) {
-            console.warn('Donation missing created_at field:', donation.id);
-            return; // Skip this donation
-          }
+      monthlyTotals.set(monthKey, 0);
+    }
+    
+    // Process donations in a single pass
+    for (const donation of donations) {
+      try {
+        // Extract created_at date
+        let donationDate: Date | null = null;
+        const created_at = donation.created_at || (donation.data && donation.data().created_at);
+        
+        if (!created_at) continue;
+        
+        // Handle different timestamp formats
+        if (created_at instanceof Timestamp) {
+          donationDate = created_at.toDate();
+        } else if (created_at.toDate && typeof created_at.toDate === 'function') {
+          donationDate = created_at.toDate();
+        } else if (created_at.seconds !== undefined) {
+          const seconds = created_at.seconds;
+          const nanoseconds = created_at.nanoseconds || 0;
+          donationDate = new Date(seconds * 1000 + nanoseconds / 1000000);
+        } else if (typeof created_at === 'string') {
+          donationDate = new Date(created_at);
+        }
+        
+        if (!donationDate || isNaN(donationDate.getTime())) continue;
+        
+        // Check if donation is within the last 6 months
+        const monthsAgo = (currentDate.getFullYear() - donationDate.getFullYear()) * 12 + 
+                          currentDate.getMonth() - donationDate.getMonth();
+        
+        if (monthsAgo >= 0 && monthsAgo < 6) {
+          const monthKey = `${donationDate.getMonth()}-${donationDate.getFullYear()}`;
           
-          let donationDate: Date | null = null;
-          
-          // Handle different timestamp formats
-          if (donationData.created_at instanceof Timestamp) {
-            donationDate = donationData.created_at.toDate();
-          } else if (donationData.created_at.toDate && typeof donationData.created_at.toDate === 'function') {
-            donationDate = donationData.created_at.toDate();
-          } else if (donationData.created_at.seconds !== undefined) {
-            const seconds = donationData.created_at.seconds;
-            const nanoseconds = donationData.created_at.nanoseconds || 0;
-            donationDate = new Date(seconds * 1000 + nanoseconds / 1000000);
-          } else if (typeof donationData.created_at === 'string') {
-            donationDate = new Date(donationData.created_at);
-          }
-          
-          if (donationDate && !isNaN(donationDate.getTime()) && 
-              donationDate.getMonth() === monthIndex && 
-              donationDate.getFullYear() === year) {
-            const amount = Number(donationData.amount) || 0;
+          if (monthlyTotals.has(monthKey)) {
+            const amount = Number(donation.amount || (donation.data && donation.data().amount)) || 0;
             if (!isNaN(amount)) {
-              monthlyTotal += amount;
+              monthlyTotals.set(monthKey, monthlyTotals.get(monthKey)! + amount);
             }
           }
-        } catch (error) {
-          console.error('Error processing donation for monthly data:', error);
-          // Continue with next donation
         }
-      });
+      } catch (error) {
+        console.error('Error processing donation for monthly data:', error);
+        // Continue with next donation
+      }
+    }
+    
+    // Convert map to array format for chart
+    const monthlyData: { name: string; amount: number }[] = [];
+    
+    for (let i = 5; i >= 0; i--) {
+      const monthIndex = (currentDate.getMonth() - i + 12) % 12;
+      const year = currentDate.getFullYear() - (currentDate.getMonth() < i ? 1 : 0);
+      const monthKey = `${monthIndex}-${year}`;
+      const monthName = `${months[monthIndex]} ${year}`;
       
-      monthlyData.push({ name: monthName, amount: monthlyTotal });
+      monthlyData.push({ 
+        name: monthName, 
+        amount: monthlyTotals.get(monthKey) || 0 
+      });
     }
     
     return monthlyData;
@@ -809,58 +788,55 @@ const AdminDashboard: React.FC = () => {
     if (!timestamp) return 'N/A';
     
     try {
+      // Generate a cache key based on the timestamp value
+      const cacheKey = timestamp instanceof Date 
+        ? timestamp.getTime().toString()
+        : timestamp instanceof Timestamp 
+          ? `${timestamp.seconds}-${timestamp.nanoseconds}`
+          : JSON.stringify(timestamp);
+      
+      // Check if we have a cached result
+      if (timestampCache.has(cacheKey)) {
+        return timestampCache.get(cacheKey)!;
+      }
+      
       let date: Date;
       
       if (timestamp instanceof Timestamp) {
-        // Firebase Timestamp object
         date = timestamp.toDate();
       } else if (timestamp instanceof Date) {
-        // JavaScript Date object
         date = timestamp;
+      } else if (timestamp.toDate && typeof timestamp.toDate === 'function') {
+        date = timestamp.toDate();
+      } else if (timestamp.seconds !== undefined) {
+        const seconds = timestamp.seconds;
+        const nanoseconds = timestamp.nanoseconds || 0;
+        date = new Date(seconds * 1000 + nanoseconds / 1000000);
       } else if (typeof timestamp === 'string') {
-        // ISO string or other string format
         date = new Date(timestamp);
-      } else if (typeof timestamp === 'number') {
-        // Unix timestamp (milliseconds)
-        date = new Date(timestamp);
-      } else if (typeof timestamp === 'object') {
-        // Handle Firestore timestamp-like objects with seconds and nanoseconds
-        if (timestamp.seconds !== undefined) {
-          const seconds = timestamp.seconds;
-          const nanoseconds = timestamp.nanoseconds || 0;
-          date = new Date(seconds * 1000 + nanoseconds / 1000000);
-        } else if (timestamp.toDate && typeof timestamp.toDate === 'function') {
-          // Handle objects with toDate method
-          date = timestamp.toDate();
-        } else {
-          console.warn('Unknown timestamp format (object):', JSON.stringify(timestamp));
-          return 'Invalid date';
-        }
       } else {
-        console.warn('Unknown timestamp format (type):', typeof timestamp);
-        return 'Invalid date';
+        return 'Invalid Date';
       }
       
-      // Check if date is valid
-      if (!date || isNaN(date.getTime())) {
-        console.warn('Invalid date object created from:', JSON.stringify(timestamp));
-        return 'Invalid date';
+      if (isNaN(date.getTime())) {
+        return 'Invalid Date';
       }
       
-      try {
-        return date.toLocaleDateString('en-US', {
-          year: 'numeric',
-          month: 'short',
-          day: 'numeric'
-        });
-      } catch (formatError) {
-        console.error('Error formatting date with toLocaleDateString:', formatError);
-        // Fallback format
-        return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
-      }
+      const formattedDate = new Intl.DateTimeFormat('en-US', {
+        month: 'short',
+        day: 'numeric',
+        year: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit'
+      }).format(date);
+      
+      // Cache the result
+      timestampCache.set(cacheKey, formattedDate);
+      
+      return formattedDate;
     } catch (error) {
-      console.error('Error formatting timestamp:', error, typeof timestamp, timestamp ? JSON.stringify(timestamp) : 'null');
-      return 'Invalid date';
+      console.error('Error formatting timestamp:', error);
+      return 'Error';
     }
   };
   
@@ -948,6 +924,105 @@ const AdminDashboard: React.FC = () => {
     }
   };
 
+  // Generate recent activity from donations, events, and users
+  const generateRecentActivity = useCallback((donations: any[], events: any[], users: any[]) => {
+    // Process recent donations
+    const recentDonations = donations.slice(0, 5).map(donation => {
+      try {
+        return {
+          id: donation.id,
+          created_at: formatTimestamp(donation.created_at),
+          amount: donation.amount ? `$${Number(donation.amount).toLocaleString()}` : 'N/A',
+          donor_name: donation.donor_name || 'Anonymous',
+          status: donation.status || 'completed'
+        };
+      } catch (err) {
+        console.warn(`Error processing recent donation ${donation.id}:`, err);
+        return {
+          id: donation.id,
+          created_at: 'Invalid date',
+          amount: 'N/A',
+          donor_name: 'Error',
+          status: 'error'
+        };
+      }
+    });
+
+    // Process recent volunteers
+    const recentVolunteers = users
+      .filter(user => user.role === 'VOLUNTEER')
+      .slice(0, 5)
+      .map(volunteer => {
+        try {
+          return {
+            id: volunteer.id,
+            created_at: formatTimestamp(volunteer.created_at),
+            name: volunteer.name || volunteer.displayName || 'Unknown Volunteer',
+            email: volunteer.email || 'No email',
+            status: volunteer.status || 'ACTIVE'
+          };
+        } catch (err) {
+          console.warn(`Error processing recent volunteer ${volunteer.id}:`, err);
+          return {
+            id: volunteer.id,
+            created_at: 'Invalid date',
+            name: 'Error',
+            email: 'Error',
+            status: 'error'
+          };
+        }
+      });
+
+    // Process recent events
+    const recentEvents = events.slice(0, 5).map(event => {
+      try {
+        return {
+          id: event.id,
+          title: event.title || 'Unnamed Event',
+          date: formatTimestamp(event.date),
+          location: event.location || 'No location',
+          status: event.status || 'upcoming'
+        };
+      } catch (err) {
+        console.warn(`Error processing recent event ${event.id}:`, err);
+        return {
+          id: event.id,
+          title: 'Error',
+          date: 'Invalid date',
+          location: 'Error',
+          status: 'error'
+        };
+      }
+    });
+
+    return {
+      recentDonations,
+      recentVolunteers,
+      recentEvents
+    };
+  }, [formatTimestamp]);
+
+  // Memoize the recent activity data to prevent unnecessary recalculations
+  const recentActivityData = useMemo(() => {
+    if (!dashboardData) return { recentDonations: [], recentVolunteers: [], recentEvents: [] };
+    return generateRecentActivity(
+      dashboardData.donations || [],
+      dashboardData.events || [],
+      dashboardData.users || []
+    );
+  }, [dashboardData, generateRecentActivity]);
+  
+  // Update stats with recent activity data whenever dashboardData changes
+  useEffect(() => {
+    if (dashboardData && recentActivityData) {
+      setStats(prevStats => ({
+        ...prevStats,
+        recentDonations: recentActivityData.recentDonations,
+        recentVolunteers: recentActivityData.recentVolunteers
+      }));
+    }
+  }, [dashboardData, recentActivityData]);
+
   return (
     <div>
       <div className="mb-6 flex justify-between items-center">
@@ -963,19 +1038,24 @@ const AdminDashboard: React.FC = () => {
           className="px-4 py-2 bg-gray-100 text-gray-700 rounded-md text-sm hover:bg-gray-200 transition-colors flex items-center space-x-2 disabled:opacity-50 disabled:cursor-not-allowed"
         >
           {loading ? (
-            <div className="animate-spin rounded-full h-4 w-4 border-t-2 border-b-2 border-gray-700 mr-2"></div>
+            <>
+              <LoadingSpinner size="small" color="gray" />
+              <span>Refreshing...</span>
+            </>
           ) : (
-            <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-            </svg>
+            <>
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+              </svg>
+              <span>Refresh Data</span>
+            </>
           )}
-          {loading ? 'Refreshing...' : 'Refresh Data'}
         </button>
       </div>
 
       {loading ? (
         <div className="flex justify-center items-center h-64">
-          <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-rose-500"></div>
+          <LoadingSpinner size="large" color="primary" />
         </div>
       ) : error ? (
         <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-md mb-6">
