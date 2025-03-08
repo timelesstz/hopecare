@@ -7,12 +7,48 @@ import {
   GoogleAuthProvider,
   signInWithPopup,
   User as FirebaseUser,
-  updateProfile,
-  sendEmailVerification
+  updateProfile as updateFirebaseProfile,
+  sendEmailVerification,
+  onAuthStateChanged,
+  getIdTokenResult
 } from 'firebase/auth';
-import { doc, setDoc, getDoc, updateDoc, serverTimestamp } from 'firebase/firestore';
+import { doc, setDoc, getDoc, updateDoc, serverTimestamp, Timestamp } from 'firebase/firestore';
 import { z } from 'zod';
 import { auth, db } from '../lib/firebase';
+import { handleAuthError, logAuthError } from '../utils/authErrorHandler';
+import { toast } from 'react-hot-toast';
+
+// Helper function to safely convert Firestore timestamps to ISO strings
+const convertTimestampToISOString = (val: any): string | null => {
+  if (!val) return null;
+  
+  // Handle string timestamps
+  if (typeof val === 'string') return val;
+  
+  // Handle Firestore Timestamp objects
+  if (val.seconds !== undefined && val.nanoseconds !== undefined) {
+    return new Date(val.seconds * 1000 + val.nanoseconds / 1000000).toISOString();
+  }
+  
+  // Handle Date objects
+  if (val instanceof Date) {
+    return val.toISOString();
+  }
+  
+  // Handle objects with toDate method (Firestore Timestamp)
+  if (typeof val.toDate === 'function') {
+    try {
+      return val.toDate().toISOString();
+    } catch (error) {
+      console.warn('Error converting timestamp with toDate():', error);
+      return null;
+    }
+  }
+  
+  // Return null for unsupported formats
+  console.warn('Unsupported timestamp format:', val);
+  return null;
+};
 
 // Reuse the same user schema from the existing AuthContext
 export const userSchema = z.object({
@@ -21,9 +57,10 @@ export const userSchema = z.object({
   name: z.string().min(2, 'Name is required'),
   role: z.enum(['ADMIN', 'DONOR', 'VOLUNTEER']),
   status: z.enum(['ACTIVE', 'INACTIVE']).default('ACTIVE'),
-  last_login: z.string().nullable(),
-  created_at: z.string().optional(),
-  updated_at: z.string().optional()
+  last_login: z.any().transform(convertTimestampToISOString).nullable().optional(),
+  created_at: z.any().transform(convertTimestampToISOString).nullable().optional(),
+  updated_at: z.any().transform(convertTimestampToISOString).nullable().optional(),
+  customClaims: z.record(z.any()).optional()
 });
 
 export type UserData = z.infer<typeof userSchema>;
@@ -49,6 +86,8 @@ interface FirebaseAuthContextType {
   updateProfile: (data: Partial<UserData>) => Promise<void>;
   clearError: () => void;
   socialAuth: (provider: 'google' | 'microsoft', role: string) => Promise<void>;
+  verifyEmail: () => Promise<void>;
+  checkUserRole: (requiredRole: string) => boolean;
 }
 
 const FirebaseAuthContext = createContext<FirebaseAuthContextType | undefined>(undefined);
@@ -66,32 +105,102 @@ export function FirebaseAuthProvider({ children }: { children: ReactNode }) {
   });
 
   useEffect(() => {
-    const unsubscribe = auth.onAuthStateChanged(async (firebaseUser) => {
+    const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
       if (firebaseUser) {
         try {
           // Get user profile from Firestore
           const userDoc = await getDoc(doc(db, 'users', firebaseUser.uid));
           
           if (userDoc.exists()) {
-            const userData = userSchema.parse({
+            const userData = userDoc.data();
+            
+            // Get custom claims from token
+            const tokenResult = await getIdTokenResult(firebaseUser);
+            const customClaims = tokenResult.claims;
+            
+            // Use our helper function to convert timestamps
+            const formattedUserData = {
               id: firebaseUser.uid,
-              ...userDoc.data()
-            });
+              email: userData.email || firebaseUser.email,
+              name: userData.name || firebaseUser.displayName || 'User',
+              role: userData.role || 'DONOR',
+              status: userData.status || 'ACTIVE',
+              last_login: userData.last_login,
+              created_at: userData.created_at,
+              updated_at: userData.updated_at,
+              customClaims
+            };
+            
+            try {
+              // Validate with Zod schema
+              const validatedUser = userSchema.parse(formattedUserData);
+              
+              // Update last login time
+              await updateDoc(doc(db, 'users', firebaseUser.uid), {
+                last_login: serverTimestamp()
+              });
+              
+              setState(prev => ({
+                ...prev,
+                isAuthenticated: true,
+                user: validatedUser,
+                loading: false,
+                lastActivity: Date.now()
+              }));
+              
+              // Save to localStorage
+              localStorage.setItem(STORAGE_KEY, JSON.stringify({
+                isAuthenticated: true,
+                user: validatedUser,
+                lastActivity: Date.now()
+              }));
+            } catch (validationError) {
+              console.error('User validation error:', validationError);
+              setState(prev => ({
+                ...prev,
+                loading: false,
+                error: 'Invalid user data format'
+              }));
+            }
+          } else {
+            // User exists in Firebase Auth but not in Firestore
+            // Create a new user document
+            const newUserData = {
+              email: firebaseUser.email,
+              name: firebaseUser.displayName || 'User',
+              role: 'DONOR', // Default role
+              status: 'ACTIVE',
+              created_at: serverTimestamp(),
+              updated_at: serverTimestamp(),
+              last_login: serverTimestamp()
+            };
+            
+            await setDoc(doc(db, 'users', firebaseUser.uid), newUserData);
+            
+            const formattedUserData = {
+              id: firebaseUser.uid,
+              email: firebaseUser.email,
+              name: firebaseUser.displayName || 'User',
+              role: 'DONOR',
+              status: 'ACTIVE',
+              created_at: new Date().toISOString(),
+              updated_at: new Date().toISOString(),
+              last_login: new Date().toISOString()
+            };
             
             setState(prev => ({
               ...prev,
               isAuthenticated: true,
-              user: userData,
+              user: formattedUserData,
               loading: false,
-              error: null,
               lastActivity: Date.now()
             }));
-          } else {
-            // User exists in Firebase Auth but not in Firestore
-            setState(prev => ({
-              ...prev,
-              loading: false,
-              error: 'User profile not found'
+            
+            // Save to localStorage
+            localStorage.setItem(STORAGE_KEY, JSON.stringify({
+              isAuthenticated: true,
+              user: formattedUserData,
+              lastActivity: Date.now()
             }));
           }
         } catch (error) {
@@ -103,6 +212,8 @@ export function FirebaseAuthProvider({ children }: { children: ReactNode }) {
           }));
         }
       } else {
+        // No user is signed in
+        localStorage.removeItem(STORAGE_KEY);
         setState(prev => ({
           ...prev,
           isAuthenticated: false,
@@ -111,163 +222,108 @@ export function FirebaseAuthProvider({ children }: { children: ReactNode }) {
         }));
       }
     });
-
-    return () => unsubscribe();
-  }, []);
-
-  useEffect(() => {
-    const checkActivity = () => {
-      if (state.isAuthenticated && Date.now() - state.lastActivity > INACTIVITY_TIMEOUT) {
-        logout();
-      }
-    };
-
-    const interval = setInterval(checkActivity, 60000);
-    return () => clearInterval(interval);
-  }, [state.isAuthenticated, state.lastActivity]);
-
-  useEffect(() => {
-    const updateActivity = () => {
-      if (state.isAuthenticated) {
-        setState(prev => ({ ...prev, lastActivity: Date.now() }));
-      }
-    };
-
+    
+    // Set up activity tracking
     window.addEventListener('mousemove', updateActivity);
-    window.addEventListener('keypress', updateActivity);
+    window.addEventListener('keydown', updateActivity);
+    window.addEventListener('click', updateActivity);
+    
+    // Check for inactivity periodically
+    const inactivityInterval = setInterval(checkActivity, 60000); // Check every minute
+    
     return () => {
+      unsubscribe();
       window.removeEventListener('mousemove', updateActivity);
-      window.removeEventListener('keypress', updateActivity);
+      window.removeEventListener('keydown', updateActivity);
+      window.removeEventListener('click', updateActivity);
+      clearInterval(inactivityInterval);
     };
-  }, [state.isAuthenticated]);
+  }, []);
+  
+  const checkActivity = () => {
+    const now = Date.now();
+    if (state.isAuthenticated && now - state.lastActivity > INACTIVITY_TIMEOUT) {
+      console.log('User inactive for too long, logging out');
+      logout();
+      toast.info('You have been logged out due to inactivity');
+    }
+  };
+  
+  const updateActivity = () => {
+    setState(prev => ({
+      ...prev,
+      lastActivity: Date.now()
+    }));
+    
+    // Update localStorage
+    if (state.isAuthenticated && state.user) {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify({
+        isAuthenticated: true,
+        user: state.user,
+        lastActivity: Date.now()
+      }));
+    }
+  };
 
   const login = async (email: string, password: string, role?: string) => {
     try {
       setState(prev => ({ ...prev, loading: true, error: null }));
       
-      console.log(`Login attempt for ${email} with role ${role || 'not specified'}`);
+      // Validate email and password
+      if (!email || !password) {
+        throw new Error('Email and password are required');
+      }
       
-      // Temporary local admin authentication for development
-      if (email === 'admin@hopecare.org' && password === 'admin@2025' && role === 'ADMIN') {
-        console.log('Using temporary admin authentication');
-        const tempAdminUser: UserData = {
-          id: 'temp-admin-id',
-          email: 'admin@hopecare.org',
-          name: 'Admin User',
-          role: 'ADMIN',
-          status: 'ACTIVE',
-          last_login: new Date().toISOString(),
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString()
-        };
-
-        setState(prev => ({
-          ...prev,
-          isAuthenticated: true,
-          user: tempAdminUser,
-          loading: false,
-          error: null,
-          lastActivity: Date.now()
-        }));
-
-        localStorage.setItem(STORAGE_KEY, JSON.stringify({
-          user: tempAdminUser,
-          lastActivity: Date.now()
-        }));
-
-        return;
-      }
-
-      // For testing purposes - allow sample donor login
-      if (email === 'john.doe@example.com' && password === 'Donor2024!' && (role === 'DONOR' || !role)) {
-        console.log('Using sample donor authentication');
-        const tempDonorUser: UserData = {
-          id: 'temp-donor-id',
-          email: 'john.doe@example.com',
-          name: 'John Doe',
-          role: 'DONOR',
-          status: 'ACTIVE',
-          last_login: new Date().toISOString(),
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString()
-        };
-
-        setState(prev => ({
-          ...prev,
-          isAuthenticated: true,
-          user: tempDonorUser,
-          loading: false,
-          error: null,
-          lastActivity: Date.now()
-        }));
-
-        localStorage.setItem(STORAGE_KEY, JSON.stringify({
-          user: tempDonorUser,
-          lastActivity: Date.now()
-        }));
-
-        return;
-      }
-
-      console.log('Attempting Firebase authentication');
+      // Sign in with Firebase
       const userCredential = await signInWithEmailAndPassword(auth, email, password);
       const firebaseUser = userCredential.user;
       
-      if (!firebaseUser) {
-        console.error('No user returned from authentication');
-        throw new Error('No user returned from authentication');
-      }
-
-      console.log('User authenticated, fetching profile');
-      // Fetch user profile from Firestore
+      // Get user profile from Firestore
       const userDoc = await getDoc(doc(db, 'users', firebaseUser.uid));
       
       if (!userDoc.exists()) {
-        console.error('User profile not found');
-        throw new Error('User profile not found');
+        // Create user document if it doesn't exist
+        const newUserData = {
+          email: firebaseUser.email,
+          name: firebaseUser.displayName || 'User',
+          role: role || 'DONOR',
+          status: 'ACTIVE',
+          created_at: serverTimestamp(),
+          updated_at: serverTimestamp(),
+          last_login: serverTimestamp()
+        };
+        
+        await setDoc(doc(db, 'users', firebaseUser.uid), newUserData);
+      } else {
+        // Check if user has the required role (if specified)
+        const userData = userDoc.data();
+        
+        if (role && userData.role !== role) {
+          // If role is specified and user doesn't have that role, throw error
+          await signOut(auth);
+          throw new Error(`You don't have ${role} privileges`);
+        }
+        
+        // Check if user is active
+        if (userData.status === 'INACTIVE') {
+          await signOut(auth);
+          throw new Error('Your account has been deactivated. Please contact support.');
+        }
+        
+        // Update last login time
+        await updateDoc(doc(db, 'users', firebaseUser.uid), {
+          last_login: serverTimestamp()
+        });
       }
       
-      const profile = userDoc.data();
-
-      // Verify role if specified
-      if (role && profile.role !== role) {
-        console.error(`Invalid role: expected ${role}, got ${profile.role}`);
-        throw new Error(`Invalid credentials for ${role.toLowerCase()} login`);
-      }
-
-      console.log('Login successful, updating state');
-      const userData = userSchema.parse({
-        id: firebaseUser.uid,
-        ...profile
-      });
-      
-      // Update last login time
-      await updateDoc(doc(db, 'users', firebaseUser.uid), {
-        last_login: new Date().toISOString(),
-      });
-      
-      setState(prev => ({
-        ...prev,
-        isAuthenticated: true,
-        user: userData,
-        loading: false,
-        error: null,
-        lastActivity: Date.now()
-      }));
-
-      // Store session data
-      localStorage.setItem(STORAGE_KEY, JSON.stringify({
-        user: userData,
-        lastActivity: Date.now()
-      }));
-
+      // Auth state listener will handle the rest
     } catch (error) {
       console.error('Login error:', error);
-      setState(prev => ({
-        ...prev,
-        loading: false,
-        error: error instanceof Error ? error.message : 'An error occurred during login'
-      }));
+      
+      const errorMessage = handleAuthError(error);
+      setState(prev => ({ ...prev, loading: false, error: errorMessage }));
+      logAuthError(error, 'login');
+      
       throw error;
     }
   };
@@ -276,61 +332,62 @@ export function FirebaseAuthProvider({ children }: { children: ReactNode }) {
     try {
       setState(prev => ({ ...prev, loading: true, error: null }));
       
-      // Create auth user with email verification
-      const userCredential = await createUserWithEmailAndPassword(auth, data.email, data.password);
+      // Validate data
+      if (!data.email || !data.name) {
+        throw new Error('Email and name are required');
+      }
+      
+      // Create user in Firebase Auth
+      const userCredential = await createUserWithEmailAndPassword(
+        auth,
+        data.email,
+        data.password || Math.random().toString(36).slice(2) // Generate random password if not provided
+      );
+      
       const firebaseUser = userCredential.user;
       
       // Update display name
-      await updateProfile(firebaseUser, {
+      await updateFirebaseProfile(firebaseUser, {
         displayName: data.name
       });
+      
+      // Create user document in Firestore
+      const userData = {
+        email: data.email,
+        name: data.name,
+        role: data.role || 'DONOR',
+        status: data.status || 'ACTIVE',
+        created_at: serverTimestamp(),
+        updated_at: serverTimestamp(),
+        last_login: serverTimestamp()
+      };
+      
+      await setDoc(doc(db, 'users', firebaseUser.uid), userData);
       
       // Send email verification
       await sendEmailVerification(firebaseUser);
       
-      // Create user profile in Firestore
-      await setDoc(doc(db, 'users', firebaseUser.uid), {
-        email: data.email,
-        name: data.name,
-        role: data.role,
-        status: 'INACTIVE', // Will be activated after email verification
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString()
-      });
-      
-      // Log registration attempt
-      await setDoc(doc(db, 'audit_logs', `${firebaseUser.uid}_${Date.now()}`), {
-        user_id: firebaseUser.uid,
-        action: 'REGISTER',
-        details: {
-          email: data.email,
-          role: data.role,
-          timestamp: new Date().toISOString()
-        },
-        created_at: serverTimestamp()
-      });
-
-      setState(prev => ({
-        ...prev,
-        error: null,
-        loading: false
-      }));
-      
+      // Auth state listener will handle the rest
+      toast.success('Registration successful! Please verify your email.');
     } catch (error) {
       console.error('Registration error:', error);
-      setState(prev => ({
-        ...prev,
-        error: error instanceof Error ? error.message : 'Registration failed',
-        loading: false
-      }));
+      
+      const errorMessage = handleAuthError(error);
+      setState(prev => ({ ...prev, loading: false, error: errorMessage }));
+      logAuthError(error, 'register');
+      
       throw error;
     }
   };
 
   const logout = async () => {
-    setState(prev => ({ ...prev, loading: true }));
     try {
+      setState(prev => ({ ...prev, loading: true }));
+      
       await signOut(auth);
+      
+      // Clear local storage
+      localStorage.removeItem(STORAGE_KEY);
       
       setState({
         isAuthenticated: false,
@@ -340,51 +397,100 @@ export function FirebaseAuthProvider({ children }: { children: ReactNode }) {
         lastActivity: Date.now()
       });
       
-      localStorage.removeItem(STORAGE_KEY);
-    } catch (error: any) {
-      setState(prev => ({
-        ...prev,
-        loading: false,
-        error: error.message || 'Logout failed'
-      }));
+      toast.success('Logged out successfully');
+    } catch (error) {
+      console.error('Logout error:', error);
+      
+      const errorMessage = handleAuthError(error);
+      setState(prev => ({ ...prev, loading: false, error: errorMessage }));
+      logAuthError(error, 'logout');
     }
   };
 
   const resetPassword = async (email: string) => {
-    setState(prev => ({ ...prev, loading: true, error: null }));
     try {
+      setState(prev => ({ ...prev, loading: true, error: null }));
+      
+      // Validate email
+      if (!email) {
+        throw new Error('Email is required');
+      }
+      
       await sendPasswordResetEmail(auth, email);
+      
       setState(prev => ({ ...prev, loading: false }));
-    } catch (error: any) {
-      setState(prev => ({
-        ...prev,
-        loading: false,
-        error: error.message || 'Password reset failed'
-      }));
+      toast.success('Password reset email sent. Please check your inbox.');
+    } catch (error) {
+      console.error('Reset password error:', error);
+      
+      const errorMessage = handleAuthError(error);
+      setState(prev => ({ ...prev, loading: false, error: errorMessage }));
+      logAuthError(error, 'resetPassword');
+      
+      throw error;
     }
   };
 
   const updateProfile = async (data: Partial<UserData>) => {
-    setState(prev => ({ ...prev, loading: true, error: null }));
     try {
-      if (!state.user?.id) throw new Error('No user logged in');
-
-      await updateDoc(doc(db, 'users', state.user.id), {
+      if (!state.user?.id) {
+        throw new Error('User not authenticated');
+      }
+      
+      setState(prev => ({ ...prev, loading: true, error: null }));
+      
+      const userRef = doc(db, 'users', state.user.id);
+      
+      // Update Firestore document
+      await updateDoc(userRef, {
         ...data,
-        updated_at: new Date().toISOString()
+        updated_at: serverTimestamp()
       });
-
-      setState(prev => ({
-        ...prev,
-        user: prev.user ? { ...prev.user, ...data } : null,
-        loading: false
-      }));
-    } catch (error: any) {
-      setState(prev => ({
-        ...prev,
-        loading: false,
-        error: error.message || 'Profile update failed'
-      }));
+      
+      // Update display name in Firebase Auth if name is provided
+      if (data.name && auth.currentUser) {
+        await updateFirebaseProfile(auth.currentUser, {
+          displayName: data.name
+        });
+      }
+      
+      // Get updated user data
+      const updatedUserDoc = await getDoc(userRef);
+      
+      if (updatedUserDoc.exists()) {
+        const updatedUserData = updatedUserDoc.data();
+        
+        // Convert Firestore timestamps to ISO strings
+        const formattedUserData = {
+          ...state.user,
+          ...data,
+          updated_at: new Date().toISOString()
+        };
+        
+        setState(prev => ({
+          ...prev,
+          user: formattedUserData,
+          loading: false,
+          lastActivity: Date.now()
+        }));
+        
+        // Update localStorage
+        localStorage.setItem(STORAGE_KEY, JSON.stringify({
+          isAuthenticated: true,
+          user: formattedUserData,
+          lastActivity: Date.now()
+        }));
+        
+        toast.success('Profile updated successfully');
+      }
+    } catch (error) {
+      console.error('Update profile error:', error);
+      
+      const errorMessage = handleAuthError(error);
+      setState(prev => ({ ...prev, loading: false, error: errorMessage }));
+      logAuthError(error, 'updateProfile');
+      
+      throw error;
     }
   };
 
@@ -401,7 +507,7 @@ export function FirebaseAuthProvider({ children }: { children: ReactNode }) {
       if (provider === 'google') {
         authProvider = new GoogleAuthProvider();
       } else {
-        throw new Error('Provider not supported');
+        throw new Error('Unsupported provider');
       }
       
       const result = await signInWithPopup(auth, authProvider);
@@ -411,39 +517,70 @@ export function FirebaseAuthProvider({ children }: { children: ReactNode }) {
       const userDoc = await getDoc(doc(db, 'users', firebaseUser.uid));
       
       if (!userDoc.exists()) {
-        // Create new user profile
-        await setDoc(doc(db, 'users', firebaseUser.uid), {
+        // Create new user document
+        const userData = {
           email: firebaseUser.email,
           name: firebaseUser.displayName || 'User',
-          role: role,
+          role: role || 'DONOR',
           status: 'ACTIVE',
-          last_login: new Date().toISOString(),
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString()
-        });
+          created_at: serverTimestamp(),
+          updated_at: serverTimestamp(),
+          last_login: serverTimestamp()
+        };
+        
+        await setDoc(doc(db, 'users', firebaseUser.uid), userData);
       } else {
-        // Update existing user
+        // Update last login time
         await updateDoc(doc(db, 'users', firebaseUser.uid), {
-          last_login: new Date().toISOString(),
-          updated_at: new Date().toISOString()
+          last_login: serverTimestamp()
         });
       }
       
-      setState(prev => ({
-        ...prev,
-        error: null,
-        loading: false
-      }));
-      
+      // Auth state listener will handle the rest
+      toast.success('Logged in successfully');
     } catch (error) {
       console.error('Social auth error:', error);
-      setState(prev => ({
-        ...prev,
-        error: error instanceof Error ? error.message : 'Social authentication failed',
-        loading: false
-      }));
+      
+      const errorMessage = handleAuthError(error);
+      setState(prev => ({ ...prev, loading: false, error: errorMessage }));
+      logAuthError(error, 'socialAuth');
+      
       throw error;
     }
+  };
+  
+  const verifyEmail = async () => {
+    try {
+      if (!auth.currentUser) {
+        throw new Error('User not authenticated');
+      }
+      
+      await sendEmailVerification(auth.currentUser);
+      toast.success('Verification email sent. Please check your inbox.');
+    } catch (error) {
+      console.error('Verify email error:', error);
+      
+      const errorMessage = handleAuthError(error);
+      setState(prev => ({ ...prev, error: errorMessage }));
+      logAuthError(error, 'verifyEmail');
+      
+      throw error;
+    }
+  };
+  
+  const checkUserRole = (requiredRole: string): boolean => {
+    if (!state.user) return false;
+    
+    // Check user role
+    if (state.user.role === requiredRole) return true;
+    
+    // Check custom claims
+    if (state.user.customClaims) {
+      if (state.user.customClaims.role === requiredRole) return true;
+      if (requiredRole === 'ADMIN' && state.user.customClaims.isAdmin === true) return true;
+    }
+    
+    return false;
   };
 
   if (state.loading) {
@@ -457,14 +594,20 @@ export function FirebaseAuthProvider({ children }: { children: ReactNode }) {
   return (
     <FirebaseAuthContext.Provider
       value={{
-        ...state,
+        isAuthenticated: state.isAuthenticated,
+        user: state.user,
+        loading: state.loading,
+        error: state.error,
+        lastActivity: state.lastActivity,
         login,
         register,
         logout,
         resetPassword,
         updateProfile,
         clearError,
-        socialAuth
+        socialAuth,
+        verifyEmail,
+        checkUserRole
       }}
     >
       {children}
@@ -474,8 +617,10 @@ export function FirebaseAuthProvider({ children }: { children: ReactNode }) {
 
 export function useFirebaseAuth() {
   const context = useContext(FirebaseAuthContext);
+  
   if (context === undefined) {
     throw new Error('useFirebaseAuth must be used within a FirebaseAuthProvider');
   }
+  
   return context;
 } 
