@@ -1,109 +1,179 @@
-import React from 'react';
+import React, { lazy, Suspense, useEffect } from 'react';
 import { Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import PageLayout from './components/PageLayout';
-import Home from './pages/Home';
-import About from './pages/About';
-import Donate from './pages/Donate';
-import Events from './pages/Events';
-import Blog from './pages/Blog';
-import BlogPost from './pages/BlogPost';
-import Volunteer from './pages/Volunteer';
-import Contact from './pages/Contact';
-import DonationSuccess from './pages/donation/DonationSuccess';
-import DonationCancel from './pages/donation/DonationCancel';
-import DonorDashboard from './pages/DonorDashboard';
-import DonorAuth from './pages/DonorAuth';
-import AdminLogin from './pages/admin/Login';
-import AdminDashboard from './pages/admin/Dashboard';
-import Education from './pages/programs/Education';
-import Health from './pages/programs/Health';
-import EconomicEmpowerment from './pages/programs/EconomicEmpowerment';
-import Projects from './pages/Projects';
-import NotFound from './pages/NotFound';
-import VolunteerDashboard from './pages/VolunteerDashboard';
-import VolunteerAuth from './pages/VolunteerAuth';
-import ResetPassword from './pages/ResetPassword';
-import ForgotPassword from './pages/ForgotPassword';
-import FirebaseAuthTest from './pages/FirebaseAuthTest';
-import FirebaseProtectedRoute from './components/auth/FirebaseProtectedRoute';
 import { useFirebaseAuth } from './context/FirebaseAuthContext';
+import FirebaseProtectedRoute from './components/auth/FirebaseProtectedRoute';
+import AdminLayout from './components/admin/AdminLayout';
+import ProtectedRoute from './components/ProtectedRoute';
+import LoadingSpinner from './components/ui/LoadingSpinner';
 
-// Login router component to redirect based on user role
-const Login = () => {
-  const { isAuthenticated, user } = useFirebaseAuth();
+// Loading component
+const LoadingFallback = () => (
+  <div className="flex items-center justify-center min-h-screen">
+    <LoadingSpinner size="large" color="primary" message="Loading..." />
+  </div>
+);
+
+// Lazy-loaded components
+const Home = lazy(() => import('./pages/Home'));
+const About = lazy(() => import('./pages/About'));
+const Donate = lazy(() => import('./pages/Donate'));
+const Events = lazy(() => import('./pages/Events'));
+const Blog = lazy(() => import('./pages/Blog'));
+const BlogPost = lazy(() => import('./pages/BlogPost'));
+const Volunteer = lazy(() => import('./pages/Volunteer'));
+const Contact = lazy(() => import('./pages/Contact'));
+const DonationSuccess = lazy(() => import('./pages/donation/success'));
+const DonationCancel = lazy(() => import('./pages/donation/DonationCancel'));
+const DonorDashboard = lazy(() => import('./pages/DonorDashboard'));
+const DonorAuth = lazy(() => import('./pages/DonorAuth'));
+const AdminLogin = lazy(() => import('./pages/admin/Login'));
+const AdminDashboard = lazy(() => import('./pages/admin/Dashboard'));
+const Education = lazy(() => import('./pages/programs/Education'));
+const Health = lazy(() => import('./pages/programs/Health'));
+const EconomicEmpowerment = lazy(() => import('./pages/programs/EconomicEmpowerment'));
+const Projects = lazy(() => import('./pages/Projects'));
+const NotFound = lazy(() => import('./pages/NotFound'));
+const VolunteerDashboard = lazy(() => import('./pages/VolunteerDashboard'));
+const VolunteerAuth = lazy(() => import('./pages/VolunteerAuth'));
+const ResetPassword = lazy(() => import('./pages/ResetPassword'));
+const ForgotPassword = lazy(() => import('./pages/ForgotPassword'));
+const FirebaseAuthTest = lazy(() => import('./pages/FirebaseAuthTest'));
+const Unauthorized = lazy(() => import('./pages/Unauthorized'));
+
+// Admin components
+const AdminContentEditor = lazy(() => import('./components/admin/ContentEditor'));
+const AdminMediaLibrary = lazy(() => import('./components/admin/MediaLibrary'));
+const AdminUserManagement = lazy(() => import('./components/admin/UserManagement'));
+const AdminAnalytics = lazy(() => import('./components/admin/Analytics'));
+const AdminDonationsManagement = lazy(() => import('./components/admin/DonationsManagement'));
+const AdminEventsManagement = lazy(() => import('./components/admin/EventsManagement'));
+const AdminVolunteersManagement = lazy(() => import('./components/admin/VolunteersManagement'));
+
+// New Admin Pages
+const AdminEvents = lazy(() => import('./pages/admin/Events'));
+const AdminSettings = lazy(() => import('./pages/admin/Settings'));
+const AdminAdmins = lazy(() => import('./pages/admin/users/Admins'));
+const AdminVolunteers = lazy(() => import('./pages/admin/users/Volunteers'));
+const AdminDonors = lazy(() => import('./pages/admin/users/Donors'));
+
+const AppRouter = () => {
+  const { user, loading } = useFirebaseAuth();
+  const location = useLocation();
+  const isAuthenticated = !!user;
   
-  if (isAuthenticated) {
-    const role = user?.role;
-    if (role === 'DONOR') {
-      return <Navigate to="/donor/dashboard" replace />;
-    } else if (role === 'VOLUNTEER') {
-      return <Navigate to="/volunteer-dashboard" replace />;
-    } else if (role === 'ADMIN') {
-      return <Navigate to="/admin/dashboard" replace />;
+  // More flexible admin check
+  const isAdmin = user && (
+    user.role === 'ADMIN' || 
+    (user.customClaims && (
+      user.customClaims.role === 'ADMIN' || 
+      user.customClaims.isAdmin === true
+    )) ||
+    user.email === 'admin@hopecaretz.org'
+  );
+
+  // Debug user info
+  useEffect(() => {
+    if (user) {
+      console.log('Router - User authenticated:', user);
+      console.log('Router - User role:', user.role);
+      console.log('Router - User claims:', user.customClaims);
+      console.log('Router - Is admin?', isAdmin);
     }
-  }
-  
-  return <Navigate to="/donor-login" replace />;
-};
+  }, [user, isAdmin]);
 
-const AppRouter: React.FC = () => {
   return (
-    <Routes>
-      {/* Public routes */}
-      <Route element={<PageLayout />}>
-        <Route path="/" element={<Home />} />
-        <Route path="/about" element={<About />} />
-        <Route path="/donate" element={<Donate />} />
-        <Route path="/events" element={<Events />} />
-        <Route path="/blog" element={<Blog />} />
-        <Route path="/blog/:id" element={<BlogPost />} />
-        <Route path="/volunteer" element={<Volunteer />} />
-        <Route path="/contact" element={<Contact />} />
-        <Route path="/programs/education" element={<Education />} />
-        <Route path="/programs/health" element={<Health />} />
-        <Route path="/programs/economic-empowerment" element={<EconomicEmpowerment />} />
-        <Route path="/projects" element={<Projects />} />
-        <Route path="/donation/success" element={<DonationSuccess />} />
-        <Route path="/donation/cancel" element={<DonationCancel />} />
-        <Route path="/firebase-auth-test" element={<FirebaseAuthTest />} />
-      </Route>
+    <Suspense fallback={<LoadingFallback />}>
+      <Routes>
+        {/* Main public routes */}
+        <Route path="/" element={<PageLayout />}>
+          <Route index element={<Home />} />
+          <Route path="about" element={<About />} />
+          <Route path="donate" element={<Donate />} />
+          <Route path="events" element={<Events />} />
+          <Route path="blog" element={<Blog />} />
+          <Route path="blog/:id" element={<BlogPost />} />
+          <Route path="volunteer" element={<Volunteer />} />
+          <Route path="contact" element={<Contact />} />
+          <Route path="donation/success" element={<DonationSuccess />} />
+          <Route path="donation/cancel" element={<DonationCancel />} />
+          <Route path="programs/education" element={<Education />} />
+          <Route path="programs/health" element={<Health />} />
+          <Route path="programs/economic-empowerment" element={<EconomicEmpowerment />} />
+          <Route path="projects" element={<Projects />} />
+          <Route path="donor-login" element={<DonorAuth />} />
+          <Route path="volunteer-login" element={<VolunteerAuth />} />
+          <Route path="reset-password" element={<ResetPassword />} />
+          <Route path="forgot-password" element={<ForgotPassword />} />
+          <Route path="firebase-test" element={<FirebaseAuthTest />} />
+          <Route path="unauthorized" element={<Unauthorized />} />
+          
+          {/* Protected routes */}
+          <Route 
+            path="donor-dashboard/*" 
+            element={
+              <ProtectedRoute requiredRole="DONOR">
+                <DonorDashboard />
+              </ProtectedRoute>
+            } 
+          />
+          
+          <Route 
+            path="volunteer-dashboard/*" 
+            element={
+              <ProtectedRoute requiredRole="VOLUNTEER">
+                <VolunteerDashboard />
+              </ProtectedRoute>
+            } 
+          />
+          
+          <Route path="*" element={<NotFound />} />
+        </Route>
+        
+        {/* Admin login route */}
+        <Route path="/admin/login" element={<AdminLogin />} />
+        <Route path="admin-login" element={<Navigate to="/admin/login" replace />} />
+        
+        {/* Admin routes with AdminLayout */}
+        <Route 
+          path="/admin/*" 
+          element={
+            <ProtectedRoute requiredRole="ADMIN">
+              <AdminLayout />
+            </ProtectedRoute>
+          }
+        >
+          <Route path="dashboard" element={<AdminDashboard />} />
+          <Route path="content" element={<AdminContentEditor />} />
+          <Route path="media" element={<AdminMediaLibrary />} />
+          
+          {/* User Management Routes */}
+          <Route path="users" element={<AdminUserManagement />} />
+          <Route path="users/admins" element={<AdminAdmins />} />
+          <Route path="users/volunteers" element={<AdminVolunteers />} />
+          <Route path="users/donors" element={<AdminDonors />} />
+          
+          <Route path="analytics" element={<AdminAnalytics />} />
+          <Route path="donations" element={<AdminDonationsManagement />} />
+          
+          {/* New Routes */}
+          <Route path="events" element={<AdminEvents />} />
+          <Route path="settings" element={<AdminSettings />} />
+          
+          <Route path="" element={<Navigate to="/admin/dashboard" replace />} />
+        </Route>
 
-      {/* Authentication routes */}
-      <Route path="/login" element={<Login />} />
-      <Route path="/donor-login" element={<DonorAuth />} />
-      <Route path="/volunteer-login" element={<VolunteerAuth />} />
-      <Route path="/admin/login" element={<AdminLogin />} />
-      <Route path="/reset-password" element={<ResetPassword />} />
-      <Route path="/forgot-password" element={<ForgotPassword />} />
-
-      {/* Protected routes */}
-      <Route path="/donor/dashboard" element={
-        <FirebaseProtectedRoute requiredRole="DONOR">
-          <PageLayout>
-            <DonorDashboard />
-          </PageLayout>
-        </FirebaseProtectedRoute>
-      } />
-      
-      <Route path="/volunteer-dashboard" element={
-        <FirebaseProtectedRoute requiredRole="VOLUNTEER">
-          <PageLayout>
-            <VolunteerDashboard />
-          </PageLayout>
-        </FirebaseProtectedRoute>
-      } />
-      
-      <Route path="/admin/dashboard" element={
-        <FirebaseProtectedRoute requiredRole="ADMIN">
-          <PageLayout>
-            <AdminDashboard />
-          </PageLayout>
-        </FirebaseProtectedRoute>
-      } />
-
-      {/* Fallback route */}
-      <Route path="*" element={<NotFound />} />
-    </Routes>
+        {/* Admin dashboard direct route */}
+        <Route 
+          path="/admin-dashboard" 
+          element={
+            <ProtectedRoute requiredRole="ADMIN">
+              <Navigate to="/admin/dashboard" replace />
+            </ProtectedRoute>
+          } 
+        />
+      </Routes>
+    </Suspense>
   );
 };
 
