@@ -7,8 +7,6 @@ import AdminLayout from './components/layouts/AdminLayout';
 import ProtectedRoute from './components/ProtectedRoute';
 import LoadingSpinner from './components/ui/LoadingSpinner';
 import StorageTest from './components/StorageTest';
-import { createBrowserRouter } from 'react-router-dom';
-import App from './App';
 import Loading from './components/Loading';
 import ErrorBoundary from './components/ErrorBoundary';
 
@@ -197,63 +195,5 @@ const AppRouter = () => {
     </Suspense>
   );
 };
-
-// Create router with lazy-loaded routes
-export const router = createBrowserRouter([
-  {
-    path: '/',
-    element: <App />,
-    children: [
-      {
-        index: true,
-        element: withSuspense(Home),
-      },
-      {
-        path: 'about',
-        element: withSuspense(About),
-      },
-      {
-        path: 'donate',
-        element: withSuspense(Donate),
-      },
-      {
-        path: 'blog',
-        element: withSuspense(Blog),
-      },
-      {
-        path: 'blog/:id',
-        element: withSuspense(BlogPost),
-      },
-      {
-        path: 'contact',
-        element: withSuspense(Contact),
-      },
-      {
-        path: 'projects',
-        element: withSuspense(Projects),
-      },
-      {
-        path: 'projects/:slug',
-        element: withSuspense(ProjectDetail),
-      },
-      {
-        path: 'donation',
-        element: withSuspense(DonationIndex),
-      },
-      {
-        path: 'donation/process',
-        element: withSuspense(DonationProcess),
-      },
-      {
-        path: 'donation/success',
-        element: withSuspense(DonationSuccess),
-      },
-      {
-        path: '*',
-        element: withSuspense(NotFound),
-      },
-    ],
-  },
-]);
 
 export default AppRouter;
