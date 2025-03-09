@@ -1,6 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { useRouter } from 'next/router';
-import Image from 'next/image';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { CheckCircle, Share2, Heart, ArrowRight } from 'lucide-react';
 import { CMSProject } from '@/types/cms';
 import { cmsService } from '@/lib/cms-service';
@@ -15,8 +14,10 @@ interface DonationDetails {
 }
 
 export default function DonationSuccessPage() {
-  const router = useRouter();
-  const { session_id } = router.query;
+  const location = useLocation();
+  const navigate = useNavigate();
+  const searchParams = new URLSearchParams(location.search);
+  const session_id = searchParams.get('session_id');
   const { trackDonation } = useAnalytics();
   
   const [verified, setVerified] = useState(false);
@@ -34,7 +35,7 @@ export default function DonationSuccessPage() {
 
   useEffect(() => {
     const verifyPayment = async () => {
-      if (session_id && typeof session_id === 'string') {
+      if (session_id) {
         const isVerified = await paymentService.verifyPayment(session_id);
         setVerified(isVerified);
 
@@ -140,11 +141,10 @@ export default function DonationSuccessPage() {
               <div className="mb-8 p-6 bg-gray-50 rounded-lg">
                 <div className="flex items-center gap-4">
                   <div className="relative w-24 h-24 rounded-lg overflow-hidden flex-shrink-0">
-                    <Image
+                    <img
                       src={project.coverImage.url}
                       alt={project.coverImage.alt}
-                      fill
-                      className="object-cover"
+                      className="object-cover w-full h-full"
                     />
                   </div>
                   <div className="text-left">
@@ -174,7 +174,7 @@ export default function DonationSuccessPage() {
                 Share
               </button>
               <button
-                onClick={() => router.push('/projects')}
+                onClick={() => navigate('/projects')}
                 className="flex-1 flex items-center justify-center gap-2 py-2 px-4 rounded-lg bg-rose-600 text-white hover:bg-rose-700 transition-colors"
               >
                 View More Projects
