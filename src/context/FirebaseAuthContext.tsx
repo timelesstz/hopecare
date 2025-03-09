@@ -26,8 +26,18 @@ const convertTimestampToISOString = (val: any): string | null => {
   if (typeof val === 'string') return val;
   
   // Handle Firestore Timestamp objects
-  if (val.seconds !== undefined && val.nanoseconds !== undefined) {
-    return new Date(val.seconds * 1000 + val.nanoseconds / 1000000).toISOString();
+  if (val instanceof Timestamp) {
+    return val.toDate().toISOString();
+  }
+  
+  // Handle objects with seconds and nanoseconds (Firestore Timestamp format)
+  if (val && typeof val === 'object' && 'seconds' in val && 'nanoseconds' in val) {
+    try {
+      return new Date(val.seconds * 1000 + val.nanoseconds / 1000000).toISOString();
+    } catch (error) {
+      console.warn('Error converting timestamp with seconds/nanoseconds:', error);
+      return null;
+    }
   }
   
   // Handle Date objects
@@ -36,7 +46,7 @@ const convertTimestampToISOString = (val: any): string | null => {
   }
   
   // Handle objects with toDate method (Firestore Timestamp)
-  if (typeof val.toDate === 'function') {
+  if (val && typeof val === 'object' && typeof val.toDate === 'function') {
     try {
       return val.toDate().toISOString();
     } catch (error) {
@@ -177,31 +187,53 @@ export function FirebaseAuthProvider({ children }: { children: ReactNode }) {
             
             await setDoc(doc(db, 'users', firebaseUser.uid), newUserData);
             
+            // Get the user document again to retrieve the server timestamps
+            const updatedUserDoc = await getDoc(doc(db, 'users', firebaseUser.uid));
+            const updatedUserData = updatedUserDoc.exists() ? updatedUserDoc.data() : null;
+            
+            // Get custom claims from token
+            const tokenResult = await getIdTokenResult(firebaseUser);
+            const customClaims = tokenResult.claims;
+            
             const formattedUserData = {
               id: firebaseUser.uid,
               email: firebaseUser.email,
               name: firebaseUser.displayName || 'User',
               role: 'DONOR',
               status: 'ACTIVE',
-              created_at: new Date().toISOString(),
-              updated_at: new Date().toISOString(),
-              last_login: new Date().toISOString()
+              // Use the retrieved timestamps if available, otherwise use current date
+              created_at: updatedUserData?.created_at || new Date().toISOString(),
+              updated_at: updatedUserData?.updated_at || new Date().toISOString(),
+              last_login: updatedUserData?.last_login || new Date().toISOString(),
+              customClaims
             };
             
-            setState(prev => ({
-              ...prev,
-              isAuthenticated: true,
-              user: formattedUserData,
-              loading: false,
-              lastActivity: Date.now()
-            }));
-            
-            // Save to localStorage
-            localStorage.setItem(STORAGE_KEY, JSON.stringify({
-              isAuthenticated: true,
-              user: formattedUserData,
-              lastActivity: Date.now()
-            }));
+            // Validate with Zod schema
+            try {
+              const validatedUser = userSchema.parse(formattedUserData);
+              
+              setState(prev => ({
+                ...prev,
+                isAuthenticated: true,
+                user: validatedUser,
+                loading: false,
+                lastActivity: Date.now()
+              }));
+              
+              // Save to localStorage
+              localStorage.setItem(STORAGE_KEY, JSON.stringify({
+                isAuthenticated: true,
+                user: validatedUser,
+                lastActivity: Date.now()
+              }));
+            } catch (validationError) {
+              console.error('User validation error:', validationError);
+              setState(prev => ({
+                ...prev,
+                loading: false,
+                error: 'Invalid user data format'
+              }));
+            }
           }
         } catch (error) {
           console.error('Error fetching user data:', error);
@@ -294,6 +326,54 @@ export function FirebaseAuthProvider({ children }: { children: ReactNode }) {
         };
         
         await setDoc(doc(db, 'users', firebaseUser.uid), newUserData);
+        
+        // Get the user document again to retrieve the server timestamps
+        const updatedUserDoc = await getDoc(doc(db, 'users', firebaseUser.uid));
+        const updatedUserData = updatedUserDoc.exists() ? updatedUserDoc.data() : null;
+        
+        // Get custom claims from token
+        const tokenResult = await getIdTokenResult(firebaseUser);
+        const customClaims = tokenResult.claims;
+        
+        const formattedUserData = {
+          id: firebaseUser.uid,
+          email: firebaseUser.email,
+          name: firebaseUser.displayName || 'User',
+          role: role || 'DONOR',
+          status: 'ACTIVE',
+          // Use the retrieved timestamps if available, otherwise use current date
+          created_at: updatedUserData?.created_at || new Date().toISOString(),
+          updated_at: updatedUserData?.updated_at || new Date().toISOString(),
+          last_login: updatedUserData?.last_login || new Date().toISOString(),
+          customClaims
+        };
+        
+        // Validate with Zod schema
+        try {
+          const validatedUser = userSchema.parse(formattedUserData);
+          
+          setState(prev => ({
+            ...prev,
+            isAuthenticated: true,
+            user: validatedUser,
+            loading: false,
+            lastActivity: Date.now()
+          }));
+          
+          // Save to localStorage
+          localStorage.setItem(STORAGE_KEY, JSON.stringify({
+            isAuthenticated: true,
+            user: validatedUser,
+            lastActivity: Date.now()
+          }));
+        } catch (validationError) {
+          console.error('User validation error:', validationError);
+          setState(prev => ({
+            ...prev,
+            loading: false,
+            error: 'Invalid user data format'
+          }));
+        }
       } else {
         // Check if user has the required role (if specified)
         const userData = userDoc.data();
@@ -460,28 +540,46 @@ export function FirebaseAuthProvider({ children }: { children: ReactNode }) {
       if (updatedUserDoc.exists()) {
         const updatedUserData = updatedUserDoc.data();
         
-        // Convert Firestore timestamps to ISO strings
+        // Get custom claims from token
+        const tokenResult = await getIdTokenResult(auth.currentUser!);
+        const customClaims = tokenResult.claims;
+        
+        // Merge existing user data with updates and convert timestamps
         const formattedUserData = {
           ...state.user,
           ...data,
-          updated_at: new Date().toISOString()
+          // Use the retrieved timestamp if available, otherwise use current date
+          updated_at: updatedUserData?.updated_at || new Date().toISOString(),
+          customClaims
         };
         
-        setState(prev => ({
-          ...prev,
-          user: formattedUserData,
-          loading: false,
-          lastActivity: Date.now()
-        }));
-        
-        // Update localStorage
-        localStorage.setItem(STORAGE_KEY, JSON.stringify({
-          isAuthenticated: true,
-          user: formattedUserData,
-          lastActivity: Date.now()
-        }));
-        
-        toast.success('Profile updated successfully');
+        // Validate with Zod schema
+        try {
+          const validatedUser = userSchema.parse(formattedUserData);
+          
+          setState(prev => ({
+            ...prev,
+            user: validatedUser,
+            loading: false,
+            lastActivity: Date.now()
+          }));
+          
+          // Update localStorage
+          localStorage.setItem(STORAGE_KEY, JSON.stringify({
+            isAuthenticated: true,
+            user: validatedUser,
+            lastActivity: Date.now()
+          }));
+          
+          toast.success('Profile updated successfully');
+        } catch (validationError) {
+          console.error('User validation error:', validationError);
+          setState(prev => ({
+            ...prev,
+            loading: false,
+            error: 'Invalid user data format'
+          }));
+        }
       }
     } catch (error) {
       console.error('Update profile error:', error);
@@ -529,14 +627,63 @@ export function FirebaseAuthProvider({ children }: { children: ReactNode }) {
         };
         
         await setDoc(doc(db, 'users', firebaseUser.uid), userData);
+        
+        // Get the user document again to retrieve the server timestamps
+        const updatedUserDoc = await getDoc(doc(db, 'users', firebaseUser.uid));
+        const updatedUserData = updatedUserDoc.exists() ? updatedUserDoc.data() : null;
+        
+        // Get custom claims from token
+        const tokenResult = await getIdTokenResult(firebaseUser);
+        const customClaims = tokenResult.claims;
+        
+        const formattedUserData = {
+          id: firebaseUser.uid,
+          email: firebaseUser.email,
+          name: firebaseUser.displayName || 'User',
+          role: role || 'DONOR',
+          status: 'ACTIVE',
+          // Use the retrieved timestamps if available, otherwise use current date
+          created_at: updatedUserData?.created_at || new Date().toISOString(),
+          updated_at: updatedUserData?.updated_at || new Date().toISOString(),
+          last_login: updatedUserData?.last_login || new Date().toISOString(),
+          customClaims
+        };
+        
+        // Validate with Zod schema
+        try {
+          const validatedUser = userSchema.parse(formattedUserData);
+          
+          setState(prev => ({
+            ...prev,
+            isAuthenticated: true,
+            user: validatedUser,
+            loading: false,
+            lastActivity: Date.now()
+          }));
+          
+          // Save to localStorage
+          localStorage.setItem(STORAGE_KEY, JSON.stringify({
+            isAuthenticated: true,
+            user: validatedUser,
+            lastActivity: Date.now()
+          }));
+        } catch (validationError) {
+          console.error('User validation error:', validationError);
+          setState(prev => ({
+            ...prev,
+            loading: false,
+            error: 'Invalid user data format'
+          }));
+        }
       } else {
         // Update last login time
         await updateDoc(doc(db, 'users', firebaseUser.uid), {
           last_login: serverTimestamp()
         });
+        
+        // Auth state listener will handle the rest
       }
       
-      // Auth state listener will handle the rest
       toast.success('Logged in successfully');
     } catch (error) {
       console.error('Social auth error:', error);
