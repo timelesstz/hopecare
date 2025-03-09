@@ -1,0 +1,27 @@
+.skip-link {
+  position: absolute;
+  top: -40px;
+  left: 0;
+  background: #0056b3;
+  color: white;
+  padding: 8px;
+  z-index: 100;
+  transition: top 0.2s ease;
+  text-decoration: none;
+  font-weight: bold;
+  border-radius: 0 0 4px 0;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+}
+
+.skip-link:focus {
+  top: 0;
+  outline: 2px solid #4a90e2;
+  outline-offset: 2px;
+}
+
+/* High contrast mode support */
+@media (forced-colors: active) {
+  .skip-link:focus {
+    outline: 2px solid CanvasText;
+  }
+} 
