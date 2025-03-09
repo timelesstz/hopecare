@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { Box, Typography, Paper, CircularProgress, Button, TextField, Alert } from '@mui/material';
 import * as firestoreUtils from '../utils/firestoreUtils';
+import { collection, getDocs } from 'firebase/firestore';
+import { db } from '../lib/firebase';
 
 interface User {
   id: string;
@@ -15,7 +17,7 @@ const FirestoreExample: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
-  const [role, setRole] = useState('DONOR');
+  const [role, setRole] = useState('USER');
 
   // Load users on component mount
   useEffect(() => {
@@ -28,21 +30,16 @@ const FirestoreExample: React.FC = () => {
     setError(null);
     
     try {
-      // Using our Firestore utility function (similar to Supabase API)
-      const { data, error } = await firestoreUtils.getAll('users', {
-        select: ['name', 'email', 'role'],
-        where: [['role', '==', 'DONOR']],
-        orderBy: [['created_at', 'desc']],
-        limit: 10
-      });
+      const { data, error } = await firestoreUtils.getAll<User>('users');
       
       if (error) {
-        throw error;
+        setError(error);
+      } else if (data) {
+        setUsers(data);
       }
-      
-      setUsers(data as User[]);
     } catch (err) {
-      setError('Failed to load users: ' + (err instanceof Error ? err.message : String(err)));
+      setError('Failed to load users');
+      console.error(err);
     } finally {
       setLoading(false);
     }
@@ -51,11 +48,17 @@ const FirestoreExample: React.FC = () => {
   // Function to add a new user
   const addUser = async (e: React.FormEvent) => {
     e.preventDefault();
+    
+    if (!name || !email) {
+      setError('Name and email are required');
+      return;
+    }
+    
     setLoading(true);
     setError(null);
     
     try {
-      const { data, error } = await firestoreUtils.create('users', {
+      const { data, error } = await firestoreUtils.insert('users', {
         name,
         email,
         role,
@@ -63,17 +66,20 @@ const FirestoreExample: React.FC = () => {
       });
       
       if (error) {
-        throw error;
+        setError(error);
+      } else {
+        // Reset form
+        setName('');
+        setEmail('');
+        setRole('USER');
+        
+        // Reload users
+        loadUsers();
       }
-      
-      // Reset form
-      setName('');
-      setEmail('');
-      
-      // Reload users
-      loadUsers();
     } catch (err) {
-      setError('Failed to add user: ' + (err instanceof Error ? err.message : String(err)));
+      setError('Failed to add user');
+      console.error(err);
+    } finally {
       setLoading(false);
     }
   };

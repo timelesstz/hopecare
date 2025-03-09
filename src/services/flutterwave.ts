@@ -1,5 +1,6 @@
 import { FlutterwaveConfig } from 'flutterwave-react-v3';
 import { v4 as uuidv4 } from 'uuid';
+import { env } from '@/utils/envUtils';
 
 export interface PaymentData {
   amount: number;
@@ -18,7 +19,7 @@ export const createFlutterwaveConfig = (data: PaymentData): FlutterwaveConfig =>
   const txRef = `hopecare-${uuidv4()}`;
   
   return {
-    public_key: import.meta.env.VITE_FLUTTERWAVE_PUBLIC_KEY,
+    public_key: env.FLUTTERWAVE_PUBLIC_KEY,
     tx_ref: txRef,
     amount: data.amount,
     currency: data.currency || 'USD',

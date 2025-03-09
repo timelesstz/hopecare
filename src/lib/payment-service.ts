@@ -1,6 +1,6 @@
 import { FlutterwaveConfig } from 'flutterwave-react-v3';
 import { v4 as uuidv4 } from 'uuid';
-import { envVars } from '@/utils/envUtils';
+import { env } from '@/utils/envUtils';
 
 export interface PaymentDetails {
   amount: number;
@@ -27,7 +27,7 @@ class PaymentService {
     }));
     
     return {
-      public_key: envVars.FLUTTERWAVE_PUBLIC_KEY,
+      public_key: env.FLUTTERWAVE_PUBLIC_KEY,
       tx_ref: txRef,
       amount: details.amount,
       currency: details.currency || 'USD',
