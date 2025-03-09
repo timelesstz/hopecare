@@ -1,18 +1,23 @@
 import React, { useEffect } from 'react';
-import { useRouter } from 'next/router';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { Loader2 } from 'lucide-react';
 import { paymentService } from '@/lib/payment-service';
 import { useAnalytics } from '@/hooks/useAnalytics';
 
 export default function DonationProcessPage() {
-  const router = useRouter();
-  const { amount, projectId, tierId, donationType } = router.query;
+  const location = useLocation();
+  const navigate = useNavigate();
+  const searchParams = new URLSearchParams(location.search);
+  const amount = searchParams.get('amount');
+  const projectId = searchParams.get('projectId');
+  const tierId = searchParams.get('tierId');
+  const donationType = searchParams.get('donationType');
   const { trackDonation } = useAnalytics();
 
   useEffect(() => {
     const processDonation = async () => {
       if (!amount || !donationType) {
-        router.push('/donation?error=invalid_amount');
+        navigate('/donation?error=invalid_amount');
         return;
       }
 
@@ -28,14 +33,12 @@ export default function DonationProcessPage() {
         // Note: We don't need to redirect here as Stripe will handle it
       } catch (error) {
         console.error('Payment processing error:', error);
-        router.push('/donation?error=payment_failed');
+        navigate('/donation?error=payment_failed');
       }
     };
 
-    if (router.isReady) {
-      processDonation();
-    }
-  }, [router.isReady, amount, projectId, tierId, donationType]);
+    processDonation();
+  }, [amount, projectId, tierId, donationType, navigate]);
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gray-50">

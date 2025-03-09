@@ -1,6 +1,5 @@
-import { GetStaticPaths, GetStaticProps } from 'next';
-import { useRouter } from 'next/router';
-import Image from 'next/image';
+import React, { useEffect, useState } from 'react';
+import { useParams, useNavigate } from 'react-router-dom';
 import { Heart, Share2, MapPin, Calendar, Users } from 'lucide-react';
 import { CMSProject } from '@/types/cms';
 import { cmsService } from '@/lib/cms-service';
@@ -9,16 +8,38 @@ import { useDonationTiers } from '@/hooks/useDonationTiers';
 import { useAnalytics } from '@/hooks/useAnalytics';
 
 interface ProjectPageProps {
-  project: CMSProject;
+  project?: CMSProject;
 }
 
-export default function ProjectPage({ project }: ProjectPageProps) {
-  const router = useRouter();
-  const { tiers, loading: tiersLoading } = useDonationTiers(project.id);
+export default function ProjectPage({ project: initialProject }: ProjectPageProps) {
+  const { slug } = useParams<{ slug: string }>();
+  const navigate = useNavigate();
+  const [project, setProject] = useState<CMSProject | null>(initialProject || null);
+  const [loading, setLoading] = useState(!initialProject);
+  const { tiers, loading: tiersLoading } = useDonationTiers(project?.id);
   const { trackProjectView } = useAnalytics();
 
-  // Handle fallback pages
-  if (router.isFallback) {
+  // Fetch project data if not provided
+  useEffect(() => {
+    if (!initialProject && slug) {
+      const fetchProject = async () => {
+        setLoading(true);
+        try {
+          const projectData = await cmsService.getProjectBySlug(slug);
+          setProject(projectData);
+        } catch (error) {
+          console.error('Error fetching project:', error);
+          // Handle 404 or other errors
+        } finally {
+          setLoading(false);
+        }
+      };
+      fetchProject();
+    }
+  }, [slug, initialProject]);
+
+  // Handle loading state
+  if (loading) {
     return (
       <div className="container mx-auto px-4 py-8">
         <div className="animate-pulse">
@@ -30,10 +51,28 @@ export default function ProjectPage({ project }: ProjectPageProps) {
     );
   }
 
+  // Handle not found
+  if (!project) {
+    return (
+      <div className="container mx-auto px-4 py-8 text-center">
+        <h1 className="text-2xl font-bold text-gray-900 mb-4">Project Not Found</h1>
+        <p className="text-gray-600 mb-6">The project you're looking for doesn't exist or has been removed.</p>
+        <button 
+          onClick={() => navigate('/projects')}
+          className="bg-rose-600 text-white px-4 py-2 rounded-lg font-medium hover:bg-rose-700 transition-colors"
+        >
+          Browse Projects
+        </button>
+      </div>
+    );
+  }
+
   // Track project view
-  React.useEffect(() => {
-    trackProjectView(project.id);
-  }, [project.id]);
+  useEffect(() => {
+    if (project) {
+      trackProjectView(project.id);
+    }
+  }, [project?.id]);
 
   const progress = (project.raisedAmount / project.targetAmount) * 100;
 
@@ -43,12 +82,10 @@ export default function ProjectPage({ project }: ProjectPageProps) {
         {/* Project Details */}
         <div className="lg:col-span-2">
           <div className="relative aspect-video w-full rounded-xl overflow-hidden mb-6">
-            <Image
+            <img
               src={project.coverImage.url}
               alt={project.coverImage.alt}
-              fill
-              className="object-cover"
-              priority
+              className="object-cover w-full h-full"
             />
           </div>
 
@@ -76,11 +113,10 @@ export default function ProjectPage({ project }: ProjectPageProps) {
             <div className="grid grid-cols-2 md:grid-cols-3 gap-4 mb-8">
               {project.gallery.map((image, index) => (
                 <div key={index} className="relative aspect-square rounded-lg overflow-hidden">
-                  <Image
+                  <img
                     src={image.url}
                     alt={image.alt}
-                    fill
-                    className="object-cover"
+                    className="object-cover w-full h-full"
                   />
                 </div>
               ))}
@@ -133,7 +169,7 @@ export default function ProjectPage({ project }: ProjectPageProps) {
                     tier={tier}
                     isSelected={false}
                     onSelect={() => {
-                      router.push(`/projects/${project.slug}/donate?tier=${tier.id}`);
+                      navigate(`/donation?projectId=${project.id}&tierId=${tier.id}`);
                     }}
                     donationType="one-time"
                   />
@@ -143,7 +179,7 @@ export default function ProjectPage({ project }: ProjectPageProps) {
 
             <div className="mt-6 flex gap-4">
               <button
-                onClick={() => router.push(`/projects/${project.slug}/donate`)}
+                onClick={() => navigate(`/donation?projectId=${project.id}`)}
                 className="flex-1 bg-rose-600 text-white px-4 py-2 rounded-lg font-medium hover:bg-rose-700 transition-colors"
               >
                 Donate Now
@@ -171,32 +207,3 @@ export default function ProjectPage({ project }: ProjectPageProps) {
     </div>
   );
 }
-
-export const getStaticPaths: GetStaticPaths = async () => {
-  const projects = await cmsService.getProjects({ status: 'active' });
-  
-  return {
-    paths: projects.map((project) => ({
-      params: { slug: project.slug },
-    })),
-    fallback: true, // Enable ISR for new projects
-  };
-};
-
-export const getStaticProps: GetStaticProps<ProjectPageProps> = async ({ params }) => {
-  try {
-    const slug = params?.slug as string;
-    const project = await cmsService.getProjectBySlug(slug);
-
-    return {
-      props: {
-        project,
-      },
-      revalidate: 60, // Revalidate every minute
-    };
-  } catch (error) {
-    return {
-      notFound: true,
-    };
-  }
-};

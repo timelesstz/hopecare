@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useRouter } from 'next/router';
-import Image from 'next/image';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { Heart, ArrowLeft } from 'lucide-react';
 import { CMSProject, CMSDonationTier } from '@/types/cms';
 import { cmsService } from '@/lib/cms-service';
@@ -12,9 +11,12 @@ interface DonationPageProps {
   defaultTiers: CMSDonationTier[];
 }
 
-export default function DonationPage({ defaultTiers }: DonationPageProps) {
-  const router = useRouter();
-  const { projectId, tierId } = router.query;
+export default function DonationPage({ defaultTiers = [] }: DonationPageProps) {
+  const location = useLocation();
+  const navigate = useNavigate();
+  const searchParams = new URLSearchParams(location.search);
+  const projectId = searchParams.get('projectId');
+  const tierId = searchParams.get('tierId');
   const { trackDonation } = useAnalytics();
 
   const [project, setProject] = useState<CMSProject | null>(null);
@@ -25,7 +27,7 @@ export default function DonationPage({ defaultTiers }: DonationPageProps) {
 
   // Fetch project details if projectId is provided
   useEffect(() => {
-    if (projectId && typeof projectId === 'string') {
+    if (projectId) {
       const fetchProject = async () => {
         try {
           const projectData = await cmsService.getProjectById(projectId);
@@ -41,7 +43,7 @@ export default function DonationPage({ defaultTiers }: DonationPageProps) {
 
   // Set initial selected tier if tierId is provided
   useEffect(() => {
-    if (tierId && typeof tierId === 'string') {
+    if (tierId) {
       const tier = project?.donationTiers?.find(t => t.id === tierId) || 
                   defaultTiers.find(t => t.id === tierId);
       if (tier) {
@@ -49,6 +51,24 @@ export default function DonationPage({ defaultTiers }: DonationPageProps) {
       }
     }
   }, [tierId, project, defaultTiers]);
+
+  // Fetch default tiers if not provided
+  useEffect(() => {
+    if (!defaultTiers || defaultTiers.length === 0) {
+      const fetchDefaultTiers = async () => {
+        try {
+          const tiers = await cmsService.getDonationTiers();
+          if (tiers && tiers.length > 0) {
+            // Only update if we got valid tiers
+            defaultTiers = tiers;
+          }
+        } catch (error) {
+          console.error('Error fetching default tiers:', error);
+        }
+      };
+      fetchDefaultTiers();
+    }
+  }, [defaultTiers]);
 
   const handleDonationSubmit = async () => {
     setLoading(true);
@@ -70,15 +90,20 @@ export default function DonationPage({ defaultTiers }: DonationPageProps) {
       });
 
       // Redirect to payment processing
-      router.push({
-        pathname: '/donation/process',
-        query: {
-          amount,
-          projectId: project?.id,
-          tierId: selectedTier?.id,
-          donationType,
-        }
+      const queryParams = new URLSearchParams({
+        amount: amount.toString(),
+        donationType,
       });
+      
+      if (project?.id) {
+        queryParams.append('projectId', project.id);
+      }
+      
+      if (selectedTier?.id) {
+        queryParams.append('tierId', selectedTier.id);
+      }
+      
+      navigate(`/donation/process?${queryParams.toString()}`);
     } catch (error) {
       console.error('Error processing donation:', error);
       // Handle error (e.g., show toast notification)
@@ -93,7 +118,7 @@ export default function DonationPage({ defaultTiers }: DonationPageProps) {
     <div className="min-h-screen bg-gray-50">
       <div className="container mx-auto px-4 py-8">
         <button
-          onClick={() => router.back()}
+          onClick={() => navigate(-1)}
           className="flex items-center gap-2 text-gray-600 hover:text-gray-900 mb-6"
         >
           <ArrowLeft className="w-4 h-4" />
@@ -120,11 +145,10 @@ export default function DonationPage({ defaultTiers }: DonationPageProps) {
               <div className="mb-8 p-4 bg-gray-50 rounded-lg">
                 <div className="flex gap-4 items-center">
                   <div className="relative w-20 h-20 rounded-lg overflow-hidden flex-shrink-0">
-                    <Image
+                    <img
                       src={project.coverImage.url}
                       alt={project.coverImage.alt}
-                      fill
-                      className="object-cover"
+                      className="object-cover w-full h-full"
                     />
                   </div>
                   <div>

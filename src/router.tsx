@@ -29,6 +29,8 @@ const BlogPost = lazy(() => import('./pages/BlogPost'));
 const Volunteer = lazy(() => import('./pages/Volunteer'));
 const Contact = lazy(() => import('./pages/Contact'));
 const DonationSuccess = lazy(() => import('./pages/donation/success'));
+const DonationProcess = lazy(() => import('./pages/donation/process'));
+const DonationIndex = lazy(() => import('./pages/donation/index'));
 const DonationCancel = lazy(() => import('./pages/donation/DonationCancel'));
 const DonorDashboard = lazy(() => import('./pages/DonorDashboard'));
 const DonorAuth = lazy(() => import('./pages/DonorAuth'));
@@ -38,6 +40,7 @@ const Education = lazy(() => import('./pages/programs/Education'));
 const Health = lazy(() => import('./pages/programs/Health'));
 const EconomicEmpowerment = lazy(() => import('./pages/programs/EconomicEmpowerment'));
 const Projects = lazy(() => import('./pages/Projects'));
+const ProjectDetail = lazy(() => import('./pages/projects/ProjectDetail'));
 const NotFound = lazy(() => import('./pages/NotFound'));
 const VolunteerDashboard = lazy(() => import('./pages/VolunteerDashboard'));
 const VolunteerAuth = lazy(() => import('./pages/VolunteerAuth'));
@@ -109,12 +112,15 @@ const AppRouter = () => {
           <Route path="blog/:id" element={<BlogPost />} />
           <Route path="volunteer" element={<Volunteer />} />
           <Route path="contact" element={<Contact />} />
+          <Route path="donation" element={<DonationIndex />} />
+          <Route path="donation/process" element={<DonationProcess />} />
           <Route path="donation/success" element={<DonationSuccess />} />
           <Route path="donation/cancel" element={<DonationCancel />} />
           <Route path="programs/education" element={<Education />} />
           <Route path="programs/health" element={<Health />} />
           <Route path="programs/economic-empowerment" element={<EconomicEmpowerment />} />
           <Route path="projects" element={<Projects />} />
+          <Route path="projects/:slug" element={<ProjectDetail />} />
           <Route path="donor-login" element={<DonorAuth />} />
           <Route path="volunteer-login" element={<VolunteerAuth />} />
           <Route path="reset-password" element={<ResetPassword />} />
@@ -227,8 +233,20 @@ export const router = createBrowserRouter([
         element: withSuspense(Projects),
       },
       {
-        path: 'projects/:id',
-        element: withSuspense(ProjectDetails),
+        path: 'projects/:slug',
+        element: withSuspense(ProjectDetail),
+      },
+      {
+        path: 'donation',
+        element: withSuspense(DonationIndex),
+      },
+      {
+        path: 'donation/process',
+        element: withSuspense(DonationProcess),
+      },
+      {
+        path: 'donation/success',
+        element: withSuspense(DonationSuccess),
       },
       {
         path: '*',
