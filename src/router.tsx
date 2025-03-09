@@ -40,7 +40,7 @@ const Education = lazy(() => import('./pages/programs/Education'));
 const Health = lazy(() => import('./pages/programs/Health'));
 const EconomicEmpowerment = lazy(() => import('./pages/programs/EconomicEmpowerment'));
 const Projects = lazy(() => import('./pages/Projects'));
-const ProjectDetail = lazy(() => import('./pages/projects/ProjectDetail'));
+const ProjectDetail = lazy(() => import('./pages/projects/[slug]'));
 const NotFound = lazy(() => import('./pages/NotFound'));
 const VolunteerDashboard = lazy(() => import('./pages/VolunteerDashboard'));
 const VolunteerAuth = lazy(() => import('./pages/VolunteerAuth'));

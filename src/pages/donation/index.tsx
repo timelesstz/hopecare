@@ -3,8 +3,8 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import { Heart, ArrowLeft } from 'lucide-react';
 import { CMSProject, CMSDonationTier } from '@/types/cms';
 import { cmsService } from '@/lib/cms-service';
-import { DonationTier } from '@/components/DonationTier';
-import { CustomDonationInput } from '@/components/CustomDonationInput';
+import DonationTier from '@/components/DonationTier';
+import CustomDonationInput from '@/components/CustomDonationInput';
 import { useAnalytics } from '@/hooks/useAnalytics';
 
 interface DonationPageProps {

@@ -3,7 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { Heart, Share2, MapPin, Calendar, Users } from 'lucide-react';
 import { CMSProject } from '@/types/cms';
 import { cmsService } from '@/lib/cms-service';
-import { DonationTier } from '@/components/DonationTier';
+import DonationTier from '@/components/DonationTier';
 import { useDonationTiers } from '@/hooks/useDonationTiers';
 import { useAnalytics } from '@/hooks/useAnalytics';
 
