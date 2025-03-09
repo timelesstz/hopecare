@@ -1,0 +1,82 @@
+.loading-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+}
+
+.loading-container.full-page {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(255, 255, 255, 0.8);
+  z-index: 1000;
+}
+
+.loading-spinner {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.spinner-circle {
+  width: 1rem;
+  height: 1rem;
+  margin: 0 0.25rem;
+  background-color: #0056b3;
+  border-radius: 50%;
+  display: inline-block;
+  animation: bounce 1.4s infinite ease-in-out both;
+}
+
+.spinner-circle:nth-child(1) {
+  animation-delay: -0.32s;
+}
+
+.spinner-circle:nth-child(2) {
+  animation-delay: -0.16s;
+}
+
+.loading-message {
+  margin-top: 1rem;
+  font-size: 1rem;
+  color: #333;
+}
+
+/* Size variations */
+.loading-container.small .spinner-circle {
+  width: 0.5rem;
+  height: 0.5rem;
+}
+
+.loading-container.large .spinner-circle {
+  width: 1.5rem;
+  height: 1.5rem;
+}
+
+.loading-container.small .loading-message {
+  font-size: 0.875rem;
+}
+
+.loading-container.large .loading-message {
+  font-size: 1.25rem;
+}
+
+@keyframes bounce {
+  0%, 80%, 100% { 
+    transform: scale(0);
+  } 
+  40% { 
+    transform: scale(1.0);
+  }
+}
+
+/* High contrast mode support */
+@media (forced-colors: active) {
+  .spinner-circle {
+    background-color: CanvasText;
+  }
+} 

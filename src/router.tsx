@@ -7,6 +7,10 @@ import AdminLayout from './components/layouts/AdminLayout';
 import ProtectedRoute from './components/ProtectedRoute';
 import LoadingSpinner from './components/ui/LoadingSpinner';
 import StorageTest from './components/StorageTest';
+import { createBrowserRouter } from 'react-router-dom';
+import App from './App';
+import Loading from './components/Loading';
+import ErrorBoundary from './components/ErrorBoundary';
 
 // Loading component
 const LoadingFallback = () => (
@@ -57,6 +61,15 @@ const AdminSettings = lazy(() => import('./pages/admin/Settings'));
 const AdminAdmins = lazy(() => import('./pages/admin/users/Admins'));
 const AdminVolunteers = lazy(() => import('./pages/admin/users/Volunteers'));
 const AdminDonors = lazy(() => import('./pages/admin/users/Donors'));
+
+// Wrap component with Suspense and ErrorBoundary
+const withSuspense = (Component: React.ComponentType) => (
+  <ErrorBoundary>
+    <Suspense fallback={<Loading />}>
+      <Component />
+    </Suspense>
+  </ErrorBoundary>
+);
 
 const AppRouter = () => {
   const { user, loading } = useFirebaseAuth();
@@ -178,5 +191,51 @@ const AppRouter = () => {
     </Suspense>
   );
 };
+
+// Create router with lazy-loaded routes
+export const router = createBrowserRouter([
+  {
+    path: '/',
+    element: <App />,
+    children: [
+      {
+        index: true,
+        element: withSuspense(Home),
+      },
+      {
+        path: 'about',
+        element: withSuspense(About),
+      },
+      {
+        path: 'donate',
+        element: withSuspense(Donate),
+      },
+      {
+        path: 'blog',
+        element: withSuspense(Blog),
+      },
+      {
+        path: 'blog/:id',
+        element: withSuspense(BlogPost),
+      },
+      {
+        path: 'contact',
+        element: withSuspense(Contact),
+      },
+      {
+        path: 'projects',
+        element: withSuspense(Projects),
+      },
+      {
+        path: 'projects/:id',
+        element: withSuspense(ProjectDetails),
+      },
+      {
+        path: '*',
+        element: withSuspense(NotFound),
+      },
+    ],
+  },
+]);
 
 export default AppRouter;
