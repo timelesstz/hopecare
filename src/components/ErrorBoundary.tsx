@@ -1,115 +1,97 @@
-import React, { Component, ErrorInfo } from 'react';
-import { Button, Typography, Box, Container } from '@mui/material';
-import { logError } from '../utils/errorLogger';
+import React, { Component, ErrorInfo, ReactNode } from 'react';
+import { handleError, ErrorType } from '../utils/errorUtils';
 
 interface Props {
-  children: React.ReactNode;
+  children: ReactNode;
+  fallback?: ReactNode | ((error: Error, resetError: () => void) => ReactNode);
 }
 
 interface State {
   hasError: boolean;
   error: Error | null;
-  errorInfo: ErrorInfo | null;
 }
 
+/**
+ * A component that catches JavaScript errors anywhere in its child component tree,
+ * logs those errors, and displays a fallback UI instead of the component tree that crashed.
+ */
 class ErrorBoundary extends Component<Props, State> {
-  public state: State = {
-    hasError: false,
-    error: null,
-    errorInfo: null,
-  };
-
-  public static getDerivedStateFromError(error: Error): State {
-    return {
-      hasError: true,
-      error,
-      errorInfo: null,
+  constructor(props: Props) {
+    super(props);
+    this.state = {
+      hasError: false,
+      error: null
     };
   }
 
-  public componentDidCatch(error: Error, errorInfo: ErrorInfo) {
-    this.setState({
-      error,
-      errorInfo,
-    });
-
-    // Log error to our error reporting service
-    logError('UI Error', {
-      error,
-      errorInfo,
-      location: window.location.href,
-      timestamp: new Date().toISOString(),
-    });
+  static getDerivedStateFromError(error: Error): State {
+    // Update state so the next render will show the fallback UI
+    return {
+      hasError: true,
+      error
+    };
   }
 
-  private handleReload = () => {
-    window.location.reload();
+  componentDidCatch(error: Error, errorInfo: ErrorInfo): void {
+    // Log the error to our error handling system
+    handleError(error, ErrorType.UNKNOWN, {
+      context: 'error-boundary',
+      userMessage: 'An unexpected error occurred in the application',
+      showToast: true,
+      logToServer: true
+    });
+    
+    console.error('Error caught by ErrorBoundary:', error);
+    console.error('Component stack:', errorInfo.componentStack);
+  }
+
+  resetError = (): void => {
+    this.setState({
+      hasError: false,
+      error: null
+    });
   };
 
-  private handleGoHome = () => {
-    window.location.href = '/';
-  };
+  render(): ReactNode {
+    const { hasError, error } = this.state;
+    const { children, fallback } = this.props;
 
-  public render() {
-    if (this.state.hasError) {
+    if (hasError && error) {
+      // If a custom fallback is provided, use it
+      if (fallback) {
+        if (typeof fallback === 'function') {
+          return fallback(error, this.resetError);
+        }
+        return fallback;
+      }
+
+      // Default fallback UI
       return (
-        <Container maxWidth="md">
-          <Box
-            display="flex"
-            flexDirection="column"
-            alignItems="center"
-            justifyContent="center"
-            minHeight="100vh"
-            textAlign="center"
-            py={4}
+        <div className="error-boundary p-6 bg-red-50 rounded-lg shadow-md">
+          <h2 className="text-xl font-bold text-red-700 mb-4">Something went wrong</h2>
+          <p className="text-gray-700 mb-4">
+            We're sorry, but an error occurred while rendering this component.
+          </p>
+          <details className="mb-4">
+            <summary className="cursor-pointer text-blue-600 hover:text-blue-800">
+              Error details
+            </summary>
+            <pre className="mt-2 p-4 bg-gray-100 rounded overflow-auto text-sm">
+              {error.toString()}
+            </pre>
+          </details>
+          <button
+            onClick={this.resetError}
+            className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-opacity-50"
           >
-            <Typography variant="h4" component="h1" gutterBottom>
-              Oops! Something went wrong
-            </Typography>
-            
-            <Typography variant="body1" color="text.secondary" paragraph>
-              We're sorry for the inconvenience. Our team has been notified and is working to fix the issue.
-            </Typography>
-
-            {process.env.NODE_ENV === 'development' && this.state.error && (
-              <Box my={4} textAlign="left" width="100%">
-                <Typography variant="h6" gutterBottom>
-                  Error Details:
-                </Typography>
-                <pre style={{ 
-                  backgroundColor: '#f5f5f5',
-                  padding: '1rem',
-                  borderRadius: '4px',
-                  overflow: 'auto'
-                }}>
-                  {this.state.error.toString()}
-                  {this.state.errorInfo?.componentStack}
-                </pre>
-              </Box>
-            )}
-
-            <Box display="flex" gap={2} mt={4}>
-              <Button
-                variant="contained"
-                color="primary"
-                onClick={this.handleReload}
-              >
-                Reload Page
-              </Button>
-              <Button
-                variant="outlined"
-                color="primary"
-                onClick={this.handleGoHome}
-              >
-                Go to Homepage
-              </Button>
-            </Box>
-          </Box>
-        </Container>
+            Try again
+          </button>
+        </div>
       );
     }
 
-    return this.props.children;
+    // When there's no error, render children normally
+    return children;
   }
 }
 

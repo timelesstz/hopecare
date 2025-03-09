@@ -1,5 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { app } from '../firebase/config';
+import { handleError, ErrorType } from '../utils/errorUtils';
+import { useIsMounted } from '../utils/hookUtils';
 
 interface FirebaseErrorBoundaryProps {
   children: React.ReactNode;
@@ -9,6 +11,7 @@ const FirebaseErrorBoundary: React.FC<FirebaseErrorBoundaryProps> = ({ children 
   const [hasError, setHasError] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const isMounted = useIsMounted();
 
   useEffect(() => {
     // Check if Firebase is properly initialized
@@ -16,8 +19,21 @@ const FirebaseErrorBoundary: React.FC<FirebaseErrorBoundaryProps> = ({ children 
       try {
         // If app is an empty object (our fallback), it won't have these properties
         if (!app.name || !app.options) {
-          setHasError(true);
-          setErrorMessage('Firebase initialization failed: Missing configuration');
+          if (isMounted.current) {
+            setHasError(true);
+            setErrorMessage('Firebase initialization failed: Missing configuration');
+          }
+          
+          handleError(
+            new Error('Firebase initialization failed: Missing configuration'),
+            ErrorType.UNKNOWN,
+            {
+              context: 'firebase-error-boundary',
+              showToast: false,
+              logToServer: true
+            }
+          );
+          return;
         }
         
         // Check for console errors related to Firebase
@@ -29,8 +45,20 @@ const FirebaseErrorBoundary: React.FC<FirebaseErrorBoundaryProps> = ({ children 
             (errorString.includes('already exists') || 
              errorString.includes('initialization failed'))
           ) {
-            setHasError(true);
-            setErrorMessage('Firebase initialization error: Duplicate initialization detected');
+            if (isMounted.current) {
+              setHasError(true);
+              setErrorMessage('Firebase initialization error: Duplicate initialization detected');
+            }
+            
+            handleError(
+              new Error('Firebase initialization error: Duplicate initialization detected'),
+              ErrorType.UNKNOWN,
+              {
+                context: 'firebase-error-boundary',
+                showToast: false,
+                logToServer: true
+              }
+            );
           }
           originalConsoleError(...args);
         };
@@ -40,16 +68,31 @@ const FirebaseErrorBoundary: React.FC<FirebaseErrorBoundaryProps> = ({ children 
           console.error = originalConsoleError;
         }, 2000);
       } catch (error) {
-        console.error('Error checking Firebase initialization:', error);
-        setHasError(true);
-        setErrorMessage(error instanceof Error ? error.message : 'Unknown Firebase initialization error');
+        if (isMounted.current) {
+          setHasError(true);
+          setErrorMessage(error instanceof Error ? error.message : 'Unknown Firebase initialization error');
+        }
+        
+        handleError(error, ErrorType.UNKNOWN, {
+          context: 'firebase-error-boundary',
+          userMessage: 'Failed to initialize Firebase services',
+          showToast: false,
+          logToServer: true
+        });
       } finally {
-        setIsLoading(false);
+        if (isMounted.current) {
+          setIsLoading(false);
+        }
       }
     };
 
     checkFirebaseInitialization();
-  }, []);
+    
+    // Cleanup function
+    return () => {
+      // Any cleanup needed
+    };
+  }, [isMounted]);
 
   if (isLoading) {
     return (

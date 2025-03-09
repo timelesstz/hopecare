@@ -3,6 +3,7 @@ import { Calendar, User, Clock, ArrowRight } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import AdminEditButton from '../components/AdminEditButton';
 import usePosts from '../hooks/usePosts';
+import { createSafeHtml, truncateHtml } from '../utils/htmlUtils';
 
 const Blog = () => {
   const { posts, isLoading, error } = usePosts();
@@ -38,7 +39,10 @@ const Blog = () => {
                   {featuredPost.author}
                 </div>
                 <h3 className="text-2xl font-bold text-gray-900 mb-4">{featuredPost.title}</h3>
-                <div className="prose prose-rose mb-4" dangerouslySetInnerHTML={{ __html: featuredPost.content.slice(0, 200) + '...' }} />
+                <div 
+                  className="prose prose-rose mb-4" 
+                  {...createSafeHtml(truncateHtml(featuredPost.content, 200))}
+                />
                 <Link to={`/blog/${featuredPost.id}`} className="text-rose-600 hover:text-rose-700 font-medium flex items-center">
                   Read More <ArrowRight className="ml-2 h-4 w-4" />
                 </Link>
@@ -63,7 +67,10 @@ const Blog = () => {
                 {post.date}
               </div>
               <h3 className="text-xl font-bold text-gray-900 mb-2">{post.title}</h3>
-              <div className="prose prose-rose mb-4" dangerouslySetInnerHTML={{ __html: post.content.slice(0, 100) + '...' }} />
+              <div 
+                className="prose prose-rose mb-4" 
+                {...createSafeHtml(truncateHtml(post.content, 100))}
+              />
               <div className="flex items-center justify-between">
                 <div className="flex items-center text-sm text-gray-600">
                   <User className="h-4 w-4 mr-2" />

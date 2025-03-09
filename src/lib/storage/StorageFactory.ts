@@ -1,23 +1,35 @@
 import { StorageInterface } from './StorageInterface';
 import { FirebaseStorageAdapter } from './FirebaseStorageAdapter';
 import { SupabaseStorageAdapter } from './SupabaseStorageAdapter';
-
-// Feature flag to determine which storage provider to use
-// Set to true to use Supabase Storage, false to use Firebase Storage
-const USE_SUPABASE_STORAGE = 
-  import.meta.env.VITE_USE_SUPABASE_STORAGE === 'true' || 
-  true; // Default to Supabase Storage
+import { env } from '../../utils/envUtils';
+import { handleError, ErrorType } from '../../utils/errorUtils';
 
 /**
- * Get the appropriate storage provider based on the feature flag
+ * Get the appropriate storage provider based on the environment configuration
  * @returns The storage provider instance
  */
 export function getStorageProvider(): StorageInterface {
-  if (USE_SUPABASE_STORAGE) {
-    console.log('Using Supabase Storage provider');
-    return new SupabaseStorageAdapter();
-  } else {
-    console.log('Using Firebase Storage provider');
+  try {
+    // Use the environment utility to get the storage provider flag
+    const useSupabaseStorage = env.USE_SUPABASE_STORAGE;
+    
+    if (useSupabaseStorage) {
+      console.log('Using Supabase Storage provider');
+      return new SupabaseStorageAdapter();
+    } else {
+      console.log('Using Firebase Storage provider');
+      return new FirebaseStorageAdapter();
+    }
+  } catch (error) {
+    // Handle any errors that occur during initialization
+    handleError(error, ErrorType.UNKNOWN, {
+      context: 'storage-provider-init',
+      userMessage: 'Failed to initialize storage provider',
+      showToast: false
+    });
+    
+    // Default to Firebase Storage in case of error
+    console.log('Error initializing storage provider, defaulting to Firebase Storage');
     return new FirebaseStorageAdapter();
   }
 }

@@ -4,6 +4,8 @@ import { getAuth } from 'firebase/auth';
 import { getFirestore } from 'firebase/firestore';
 import { getStorage } from 'firebase/storage';
 import { getAnalytics, isSupported } from 'firebase/analytics';
+import { env } from '../utils/envUtils';
+import { handleError, ErrorType } from '../utils/errorUtils';
 
 // Log environment variable status for debugging
 const logEnvStatus = () => {
@@ -23,20 +25,20 @@ const logEnvStatus = () => {
   });
 };
 
-// In production, log environment variable status
-if (import.meta.env.PROD) {
+// In development, log environment variable status
+if (env.isDevelopment()) {
   logEnvStatus();
 }
 
-// Firebase configuration with fallbacks for production
+// Firebase configuration using our environment utilities
 const firebaseConfig = {
-  apiKey: import.meta.env.VITE_FIREBASE_API_KEY || 'AIzaSyCj5t-3Ch_9hqZWXLfWbR9pjHn5hkOV3vY',
-  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN || 'hopecare-app.firebaseapp.com',
-  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID || 'hopecare-app',
-  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET || 'hopecare-app.appspot.com',
-  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID || '808667296406',
-  appId: import.meta.env.VITE_FIREBASE_APP_ID || '1:808667296406:web:f07e7291437103cfdf08b7',
-  measurementId: import.meta.env.VITE_FIREBASE_MEASUREMENT_ID || 'G-3CR0LRE3QF'
+  apiKey: env.FIREBASE_API_KEY,
+  authDomain: env.FIREBASE_AUTH_DOMAIN,
+  projectId: env.FIREBASE_PROJECT_ID,
+  storageBucket: env.FIREBASE_STORAGE_BUCKET,
+  messagingSenderId: env.FIREBASE_MESSAGING_SENDER_ID,
+  appId: env.FIREBASE_APP_ID,
+  measurementId: env.FIREBASE_MEASUREMENT_ID
 };
 
 // Initialize Firebase with error handling
@@ -56,14 +58,24 @@ try {
   isSupported().then(yes => {
     if (yes) {
       analytics = getAnalytics(app);
+      console.log('Firebase Analytics initialized successfully');
+    } else {
+      console.log('Firebase Analytics not supported in this environment');
     }
   }).catch(error => {
-    console.warn('Firebase Analytics not supported:', error);
+    handleError(error, ErrorType.UNKNOWN, {
+      context: 'firebase-analytics-init',
+      showToast: false,
+      userMessage: 'Firebase Analytics initialization failed'
+    });
   });
   
   console.log('Firebase initialized successfully');
 } catch (error) {
-  console.error('Failed to initialize Firebase:', error);
+  handleError(error, ErrorType.UNKNOWN, {
+    context: 'firebase-init',
+    userMessage: 'Failed to initialize Firebase services'
+  });
   
   // Create dummy implementations for Firebase services
   app = {} as any;
