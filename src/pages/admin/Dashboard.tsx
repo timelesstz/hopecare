@@ -217,6 +217,17 @@ const AdminDashboard: React.FC = () => {
   const [recentActivities, setRecentActivities] = useState<any[]>([]);
   const [donationData, setDonationData] = useState<{ name: string; amount: number }[]>([]);
   const [volunteerData, setVolunteerData] = useState<{ name: string; value: number }[]>([]);
+  const [dashboardData, setDashboardData] = useState<any>({
+    users: [],
+    donations: [],
+    events: [],
+    settings: null,
+    totalDonations: 0,
+    activeUsers: 0,
+    upcomingEvents: 0,
+    donationsByMonth: [],
+    recentActivity: []
+  });
   const [retryCount, setRetryCount] = useState(0);
   const maxRetries = 3;
   const [missingOptionalCollections, setMissingOptionalCollections] = useState<string[]>([]);
