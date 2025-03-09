@@ -6,6 +6,7 @@ import FirebaseProtectedRoute from './components/auth/FirebaseProtectedRoute';
 import AdminLayout from './components/layouts/AdminLayout';
 import ProtectedRoute from './components/ProtectedRoute';
 import LoadingSpinner from './components/ui/LoadingSpinner';
+import StorageTest from './components/StorageTest';
 
 // Loading component
 const LoadingFallback = () => (
@@ -107,6 +108,7 @@ const AppRouter = () => {
           <Route path="forgot-password" element={<ForgotPassword />} />
           <Route path="firebase-test" element={<FirebaseAuthTest />} />
           <Route path="unauthorized" element={<Unauthorized />} />
+          <Route path="storage-test" element={<StorageTest />} />
           
           {/* Protected routes */}
           <Route 
