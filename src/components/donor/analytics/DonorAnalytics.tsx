@@ -2,10 +2,10 @@ import React from 'react';
 import DonationTrends from './DonationTrends';
 import CampaignDistribution from './CampaignDistribution';
 import DonationGoals from './DonationGoals';
-import { DonationHistory } from '../../../types/donor';
+import { Donation } from '../../../hooks/useDonorData';
 
 interface DonorAnalyticsProps {
-  donations: DonationHistory[];
+  donations: Donation[];
 }
 
 const DonorAnalytics: React.FC<DonorAnalyticsProps> = ({ donations }) => {

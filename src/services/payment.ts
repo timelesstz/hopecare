@@ -25,8 +25,17 @@ export const initializePayment = (data: {
   name: string;
   phone?: string;
 }): PaymentConfig => {
+  // Get the public key from environment variables with fallback for development
+  const publicKey = import.meta.env.VITE_FLUTTERWAVE_PUBLIC_KEY || 
+                   (import.meta.env.DEV ? 'FLWPUBK_TEST-43f6b2c44c12c2a8e3f9068f9c6c1b2d-X' : '');
+  
+  if (!publicKey) {
+    console.error('Flutterwave public key is missing');
+    throw new Error('Payment configuration error: Missing API key');
+  }
+  
   const config: PaymentConfig = {
-    public_key: import.meta.env.VITE_FLUTTERWAVE_PUBLIC_KEY,
+    public_key: publicKey,
     tx_ref: `hope-${Date.now()}`,
     amount: data.amount,
     currency: 'USD',
@@ -58,6 +67,13 @@ export const initializePayment = (data: {
 };
 
 export const handlePaymentCallback = async (response: any) => {
+  // Handle case where response is undefined or null
+  if (!response) {
+    const error = new Error('Payment response is empty');
+    logPaymentError('Empty payment response', { error: error.message });
+    throw error;
+  }
+  
   if (response.status === 'successful') {
     try {
       // Log successful payment from Flutterwave
@@ -70,6 +86,21 @@ export const handlePaymentCallback = async (response: any) => {
           currency: response.currency
         }
       );
+
+      // In development environment, mock the verification
+      if (import.meta.env.DEV && !response.transaction_id) {
+        console.log('Development mode: Mocking payment verification');
+        return {
+          status: 'complete',
+          transaction_id: `dev-${Date.now()}`,
+          amount: response.amount,
+          currency: response.currency || 'USD',
+          customer: {
+            email: response.customer?.email || 'dev@example.com',
+            name: response.customer?.name || 'Dev User'
+          }
+        };
+      }
 
       const verificationResponse = await verifyTransaction(response.transaction_id);
       
@@ -97,8 +128,8 @@ export const handlePaymentCallback = async (response: any) => {
       logPaymentError(
         'Payment verification error', 
         { 
-          transaction_id: response.transaction_id,
-          error
+          transaction_id: response.transaction_id || 'unknown',
+          error: error instanceof Error ? error.message : String(error)
         }
       );
       console.error('Payment verification failed:', error);
@@ -119,6 +150,21 @@ export const handlePaymentCallback = async (response: any) => {
 
 const verifyTransaction = async (transactionId: string) => {
   try {
+    // In development environment, mock the API call
+    if (import.meta.env.DEV && (!transactionId || transactionId.startsWith('dev-'))) {
+      console.log('Development mode: Mocking transaction verification');
+      return {
+        status: 'complete',
+        transaction_id: transactionId || `dev-${Date.now()}`,
+        amount: 100,
+        currency: 'USD',
+        customer: {
+          email: 'dev@example.com',
+          name: 'Dev User'
+        }
+      };
+    }
+    
     const response = await fetch(`/api/verify-payment?transaction_id=${transactionId}`, {
       method: 'GET',
       headers: {
@@ -147,7 +193,7 @@ const verifyTransaction = async (transactionId: string) => {
       'Transaction verification exception', 
       { 
         transaction_id: transactionId,
-        error
+        error: error instanceof Error ? error.message : String(error)
       }
     );
     throw error;

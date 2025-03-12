@@ -1,4 +1,7 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import { db, auth } from '../../lib/firebase';
+import { collection, getDocs, addDoc, updateDoc, deleteDoc, doc, Timestamp } from 'firebase/firestore';
+import { createUserWithEmailAndPassword } from 'firebase/auth';
 
 interface User {
   id: string;
@@ -6,7 +9,7 @@ interface User {
   email: string;
   role: 'admin' | 'editor' | 'viewer';
   status: 'active' | 'inactive';
-  lastLogin: Date;
+  lastLogin?: Date | Timestamp | null;
 }
 
 interface Permission {
@@ -17,16 +20,7 @@ interface Permission {
 }
 
 const UserManagement: React.FC = () => {
-  const [users, setUsers] = useState<User[]>([
-    {
-      id: '1',
-      name: 'Admin User',
-      email: 'admin@hopecare.org',
-      role: 'admin',
-      status: 'active',
-      lastLogin: new Date(),
-    },
-  ]);
+  const [users, setUsers] = useState<User[]>([]);
 
   const [permissions] = useState<Permission[]>([
     {
@@ -54,36 +48,97 @@ const UserManagement: React.FC = () => {
     name: '',
     email: '',
     role: 'viewer' as const,
+    password: '', // Added password field for Firebase Auth
   });
 
-  const addUser = () => {
-    if (newUser.name && newUser.email) {
-      const user: User = {
-        id: Date.now().toString(),
-        name: newUser.name,
-        email: newUser.email,
-        role: newUser.role,
-        status: 'active',
-        lastLogin: new Date(),
-      };
-      setUsers([...users, user]);
-      setNewUser({ name: '', email: '', role: 'viewer' });
-      setShowAddUser(false);
+  useEffect(() => {
+    fetchUsers();
+  }, []);
+
+  const fetchUsers = async () => {
+    try {
+      const usersCollection = collection(db, 'users');
+      const userSnapshot = await getDocs(usersCollection);
+      const usersList = userSnapshot.docs.map(doc => {
+        const data = doc.data();
+        // Convert Firestore timestamp to Date if it exists
+        let lastLogin = data.lastLogin;
+        if (lastLogin && lastLogin.toDate) {
+          lastLogin = lastLogin.toDate();
+        }
+        return {
+          id: doc.id,
+          ...data,
+          lastLogin
+        };
+      }) as User[];
+      setUsers(usersList);
+    } catch (error) {
+      console.error('Error fetching users:', error);
     }
   };
 
-  const updateUserRole = (userId: string, newRole: User['role']) => {
-    setUsers(users.map(user =>
-      user.id === userId ? { ...user, role: newRole } : user
-    ));
+  const addUser = async () => {
+    if (newUser.name && newUser.email && newUser.password) {
+      try {
+        // Create user in Firebase Authentication
+        const userCredential = await createUserWithEmailAndPassword(
+          auth,
+          newUser.email,
+          newUser.password
+        );
+        
+        // Add user to Firestore
+        const user: Omit<User, 'id'> = {
+          name: newUser.name,
+          email: newUser.email,
+          role: newUser.role,
+          status: 'active',
+          lastLogin: new Date(),
+        };
+        
+        const docRef = await addDoc(collection(db, 'users'), {
+          ...user,
+          uid: userCredential.user.uid, // Store Firebase Auth UID
+        });
+        
+        setUsers([...users, { id: docRef.id, ...user }]);
+        setNewUser({ name: '', email: '', role: 'viewer', password: '' });
+        setShowAddUser(false);
+      } catch (error) {
+        console.error('Error adding user:', error);
+      }
+    }
   };
 
-  const toggleUserStatus = (userId: string) => {
-    setUsers(users.map(user =>
-      user.id === userId
-        ? { ...user, status: user.status === 'active' ? 'inactive' : 'active' }
-        : user
-    ));
+  const updateUserRole = async (userId: string, newRole: User['role']) => {
+    try {
+      const userRef = doc(db, 'users', userId);
+      await updateDoc(userRef, { role: newRole });
+      
+      setUsers(users.map(user =>
+        user.id === userId ? { ...user, role: newRole } : user
+      ));
+    } catch (error) {
+      console.error('Error updating user role:', error);
+    }
+  };
+
+  const toggleUserStatus = async (userId: string) => {
+    try {
+      const user = users.find(u => u.id === userId);
+      if (!user) return;
+      
+      const newStatus = user.status === 'active' ? 'inactive' : 'active';
+      const userRef = doc(db, 'users', userId);
+      await updateDoc(userRef, { status: newStatus });
+      
+      setUsers(users.map(user =>
+        user.id === userId ? { ...user, status: newStatus } : user
+      ));
+    } catch (error) {
+      console.error('Error toggling user status:', error);
+    }
   };
 
   const getRolePermissions = (role: User['role']) => {
@@ -138,6 +193,15 @@ const UserManagement: React.FC = () => {
                     <option value="editor">Editor</option>
                     <option value="admin">Admin</option>
                   </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700">Password</label>
+                  <input
+                    type="password"
+                    value={newUser.password}
+                    onChange={(e) => setNewUser({ ...newUser, password: e.target.value })}
+                    className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-hopecare-blue focus:ring-hopecare-blue"
+                  />
                 </div>
                 <div className="flex justify-end space-x-4 mt-6">
                   <button
@@ -214,7 +278,9 @@ const UserManagement: React.FC = () => {
                     </span>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                    {user.lastLogin.toLocaleDateString()}
+                    {user.lastLogin && user.lastLogin instanceof Date 
+                      ? user.lastLogin.toLocaleDateString() 
+                      : 'Never'}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm">
                     <button

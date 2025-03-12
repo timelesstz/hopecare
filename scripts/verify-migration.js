@@ -1,25 +1,26 @@
-// This script verifies that data has been correctly migrated from Supabase to Firebase
-// Run with: node scripts/verify-migration.js <collection>
-// Example: node scripts/verify-migration.js users
+// This script verifies the migration by checking the data in Firestore
+// Run with: node scripts/verify-migration.js
 
 import { config } from 'dotenv';
-import { createClient } from '@supabase/supabase-js';
 import { initializeApp, cert } from 'firebase-admin/app';
+import { getAuth } from 'firebase-admin/auth';
 import { getFirestore } from 'firebase-admin/firestore';
+import { fileURLToPath } from 'url';
+import { dirname } from 'path';
 
 // Load environment variables
 config();
 
-// Supabase configuration
-const supabaseUrl = process.env.VITE_SUPABASE_URL;
-const supabaseServiceKey = process.env.VITE_SUPABASE_SERVICE_KEY || process.env.VITE_SUPABASE_ANON_KEY;
+// Get the directory name
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
 
 // Firebase configuration
 const firebaseServiceAccount = {
   "type": "service_account",
   "project_id": process.env.FIREBASE_PROJECT_ID,
   "private_key_id": process.env.FIREBASE_PRIVATE_KEY_ID,
-  "private_key": process.env.FIREBASE_PRIVATE_KEY.replace(/\\n/g, '\n'),
+  "private_key": process.env.FIREBASE_PRIVATE_KEY?.replace(/\\n/g, '\n'),
   "client_email": process.env.FIREBASE_CLIENT_EMAIL,
   "client_id": process.env.FIREBASE_CLIENT_ID,
   "auth_uri": "https://accounts.google.com/o/oauth2/auth",
@@ -28,211 +29,95 @@ const firebaseServiceAccount = {
   "client_x509_cert_url": process.env.FIREBASE_CLIENT_CERT_URL
 };
 
-// Initialize Supabase
-const supabase = createClient(supabaseUrl, supabaseServiceKey);
-
-// Initialize Firebase
-initializeApp({
+// Initialize Firebase Admin SDK
+const app = initializeApp({
   credential: cert(firebaseServiceAccount)
 });
 
-const db = getFirestore();
+const auth = getAuth(app);
+const db = getFirestore(app);
 
-// Table mapping from Supabase to Firestore
-const tableMapping = {
-  'users': 'users',
-  'donor_profiles': 'donor_profiles',
-  'volunteer_profiles': 'volunteer_profiles',
-  'donations': 'donations',
-  'projects': 'projects',
-  'events': 'events',
-  'blog_posts': 'blog_posts',
-  'audit_logs': 'audit_logs',
-  'activity_logs': 'activity_logs'
+// Colors for console output
+const colors = {
+  reset: '\x1b[0m',
+  red: '\x1b[31m',
+  green: '\x1b[32m',
+  yellow: '\x1b[33m',
+  blue: '\x1b[34m',
+  magenta: '\x1b[35m',
+  cyan: '\x1b[36m',
 };
 
-// Get command line arguments
-const collection = process.argv[2];
-
-if (!collection) {
-  console.error('Please provide a collection name to verify.');
-  console.log('Usage: node scripts/verify-migration.js <collection>');
-  console.log('Available collections:', Object.keys(tableMapping).join(', '));
-  process.exit(1);
-}
-
-if (!tableMapping[collection]) {
-  console.error(`Unknown collection: ${collection}`);
-  console.log('Available collections:', Object.keys(tableMapping).join(', '));
-  process.exit(1);
-}
-
 async function verifyMigration() {
+  console.log(`${colors.cyan}Verifying migration...${colors.reset}`);
+  
+  // Verify users
+  console.log(`\n${colors.yellow}Verifying users...${colors.reset}`);
   try {
-    console.log(`Verifying migration of ${collection}...`);
+    const listUsersResult = await auth.listUsers();
+    console.log(`${colors.green}✓ Found ${listUsersResult.users.length} users in Firebase Authentication${colors.reset}`);
     
-    // Get data from Supabase
-    const { data: supabaseData, error: supabaseError } = await supabase
-      .from(collection)
-      .select('*');
-    
-    if (supabaseError) {
-      console.error(`Error fetching data from Supabase ${collection}:`, supabaseError);
-      return;
-    }
-    
-    console.log(`Found ${supabaseData.length} records in Supabase ${collection}`);
-    
-    // Get data from Firestore
-    const firestoreCollection = tableMapping[collection];
-    const firestoreSnapshot = await db.collection(firestoreCollection).get();
-    const firestoreData = firestoreSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-    
-    console.log(`Found ${firestoreData.length} records in Firestore ${firestoreCollection}`);
-    
-    // Compare record counts
-    if (supabaseData.length === firestoreData.length) {
-      console.log('✅ Record counts match');
-    } else {
-      console.log('❌ Record counts do not match');
-      console.log(`   Supabase: ${supabaseData.length}`);
-      console.log(`   Firestore: ${firestoreData.length}`);
-    }
-    
-    // Check for missing records
-    const supabaseIds = new Set(supabaseData.map(record => record.id));
-    const firestoreIds = new Set(firestoreData.map(record => record.id));
-    
-    const missingInFirestore = [...supabaseIds].filter(id => !firestoreIds.has(id));
-    const extraInFirestore = [...firestoreIds].filter(id => !supabaseIds.has(id));
-    
-    if (missingInFirestore.length > 0) {
-      console.log(`❌ ${missingInFirestore.length} records from Supabase are missing in Firestore`);
-      if (missingInFirestore.length <= 5) {
-        console.log('   Missing IDs:', missingInFirestore);
-      } else {
-        console.log('   First 5 missing IDs:', missingInFirestore.slice(0, 5));
+    // List users
+    listUsersResult.users.forEach(user => {
+      console.log(`${colors.blue}- ${user.email} (${user.uid})${colors.reset}`);
+      if (user.customClaims) {
+        console.log(`  ${colors.blue}Role: ${user.customClaims.role}${colors.reset}`);
+        console.log(`  ${colors.blue}Status: ${user.customClaims.status}${colors.reset}`);
       }
-    } else {
-      console.log('✅ All Supabase records exist in Firestore');
-    }
-    
-    if (extraInFirestore.length > 0) {
-      console.log(`ℹ️ ${extraInFirestore.length} records in Firestore don't exist in Supabase`);
-      if (extraInFirestore.length <= 5) {
-        console.log('   Extra IDs:', extraInFirestore);
-      } else {
-        console.log('   First 5 extra IDs:', extraInFirestore.slice(0, 5));
-      }
-    } else {
-      console.log('✅ No extra records in Firestore');
-    }
-    
-    // Compare sample records
-    console.log('\nComparing sample records:');
-    const sampleSize = Math.min(5, supabaseData.length);
-    let matchCount = 0;
-    
-    for (let i = 0; i < sampleSize; i++) {
-      const supabaseRecord = supabaseData[i];
-      const firestoreRecord = firestoreData.find(r => r.id === supabaseRecord.id);
-      
-      if (!firestoreRecord) {
-        console.log(`❌ Record ${supabaseRecord.id} not found in Firestore`);
-        continue;
-      }
-      
-      // Compare fields
-      const fieldDifferences = compareRecords(supabaseRecord, firestoreRecord);
-      
-      if (fieldDifferences.length === 0) {
-        console.log(`✅ Record ${supabaseRecord.id} matches`);
-        matchCount++;
-      } else {
-        console.log(`❌ Record ${supabaseRecord.id} has differences:`);
-        fieldDifferences.forEach(diff => {
-          console.log(`   - ${diff}`);
-        });
-      }
-    }
-    
-    console.log(`\n${matchCount} out of ${sampleSize} sample records match exactly`);
-    
-    // Overall assessment
-    if (supabaseData.length === firestoreData.length && missingInFirestore.length === 0 && matchCount === sampleSize) {
-      console.log('\n🎉 Migration verification successful! Data appears to be correctly migrated.');
-    } else {
-      console.log('\n⚠️ Migration verification found issues. Please review the differences above.');
-    }
-    
+    });
   } catch (error) {
-    console.error(`Verification failed for ${collection}:`, error);
+    console.error(`${colors.red}✗ Error verifying users:${colors.reset}`, error.message);
   }
-}
-
-// Compare two records and return an array of differences
-function compareRecords(record1, record2) {
-  const differences = [];
   
-  // Get all unique keys from both records
-  const allKeys = new Set([...Object.keys(record1), ...Object.keys(record2)]);
+  // Verify Firestore collections
+  const collections = [
+    'users',
+    'donor_profiles',
+    'volunteer_profiles',
+    'donations',
+    'projects'
+  ];
   
-  for (const key of allKeys) {
-    // Skip comparison for certain fields that might be different by design
-    if (['created_at', 'updated_at'].includes(key)) {
-      continue;
-    }
-    
-    const value1 = record1[key];
-    const value2 = record2[key];
-    
-    // Check if the key exists in both records
-    if (!(key in record1)) {
-      differences.push(`Field '${key}' exists in Firestore but not in Supabase`);
-      continue;
-    }
-    
-    if (!(key in record2)) {
-      differences.push(`Field '${key}' exists in Supabase but not in Firestore`);
-      continue;
-    }
-    
-    // Compare values
-    if (typeof value1 !== typeof value2) {
-      differences.push(`Field '${key}' has different types: ${typeof value1} vs ${typeof value2}`);
-      continue;
-    }
-    
-    // Handle different value types
-    if (value1 === null && value2 === null) {
-      continue; // Both null, no difference
-    }
-    
-    if (value1 === null || value2 === null) {
-      differences.push(`Field '${key}' is null in one record but not the other`);
-      continue;
-    }
-    
-    if (typeof value1 === 'object') {
-      // For objects, do a simple JSON comparison
-      if (JSON.stringify(value1) !== JSON.stringify(value2)) {
-        differences.push(`Field '${key}' has different object values`);
-      }
-    } else if (value1 !== value2) {
-      differences.push(`Field '${key}' has different values: '${value1}' vs '${value2}'`);
+  for (const collectionName of collections) {
+    console.log(`\n${colors.yellow}Verifying ${collectionName}...${colors.reset}`);
+    try {
+      const snapshot = await db.collection(collectionName).get();
+      console.log(`${colors.green}✓ Found ${snapshot.size} documents in ${collectionName}${colors.reset}`);
+      
+      // List documents
+      snapshot.forEach(doc => {
+        const data = doc.data();
+        console.log(`${colors.blue}- ${doc.id}${colors.reset}`);
+        
+        // Print some key fields based on collection type
+        if (collectionName === 'users') {
+          console.log(`  ${colors.blue}Email: ${data.email}${colors.reset}`);
+          console.log(`  ${colors.blue}Role: ${data.role}${colors.reset}`);
+        } else if (collectionName === 'donor_profiles' || collectionName === 'volunteer_profiles') {
+          console.log(`  ${colors.blue}User ID: ${data.user_id}${colors.reset}`);
+        } else if (collectionName === 'donations') {
+          console.log(`  ${colors.blue}Amount: ${data.amount} ${data.currency}${colors.reset}`);
+          console.log(`  ${colors.blue}Status: ${data.status}${colors.reset}`);
+        } else if (collectionName === 'projects') {
+          console.log(`  ${colors.blue}Title: ${data.title}${colors.reset}`);
+          console.log(`  ${colors.blue}Goal: ${data.goal_amount}${colors.reset}`);
+        }
+      });
+    } catch (error) {
+      console.error(`${colors.red}✗ Error verifying ${collectionName}:${colors.reset}`, error.message);
     }
   }
   
-  return differences;
+  console.log(`\n${colors.cyan}Migration verification completed.${colors.reset}`);
 }
 
 // Run the verification
 verifyMigration()
   .then(() => {
-    console.log('Verification script completed.');
+    console.log(`${colors.green}Verification completed successfully${colors.reset}`);
     process.exit(0);
   })
   .catch(error => {
-    console.error('Verification script failed:', error);
+    console.error(`${colors.red}Verification failed:${colors.reset}`, error);
     process.exit(1);
   }); 

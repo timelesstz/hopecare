@@ -1,196 +1,154 @@
-import React, { useState } from 'react';
-import { 
-  BarChart2, 
-  History, 
-  Clock, 
-  Settings, 
-  CreditCard,
-  FileText,
-  Bell,
-  Heart,
-  MessageSquare
-} from 'lucide-react';
-import { Link } from 'react-router-dom';
-import DonorStats from '../components/donor/DonorStats';
-import DonationHistory from '../components/donor/DonationHistory';
-import RecurringDonations from '../components/donor/RecurringDonations';
-import DonorProfile from '../components/donor/DonorProfile';
-import DonorAnalytics from '../components/donor/analytics/DonorAnalytics';
-import PaymentMethods from '../components/donor/settings/PaymentMethods';
-import EmailPreferences from '../components/donor/settings/EmailPreferences';
-import TaxDocuments from '../components/donor/settings/TaxDocuments';
-import SecuritySettings from '../components/donor/settings/SecuritySettings';
-import MessageCenter from '../components/donor/messaging/MessageCenter';
-import SuggestedProjects from '../components/donor/SuggestedProjects';
+import { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { doc, getDoc } from 'firebase/firestore';
+import { db } from '../firebase/config';
+import { useAuth } from '../hooks/useAuth';
+import DonorSidebar from '../components/donor/DonorSidebar';
+import DonorHeader from '../components/donor/DonorHeader';
+import DonorOverview from '../components/donor/DonorOverview';
+import DonorProjects from '../components/donor/DonorProjects';
+import DonorDonations from '../components/donor/DonorDonations';
+import DonorSettings from '../components/donor/DonorSettings';
+import { Donor } from '../types/donor';
+import { CircularProgress, Alert, AlertTitle } from '@mui/material';
 
-const mockDonations = [
-  {
-    id: "1",
-    amount: 100,
-    date: "2024-03-15",
-    campaign: "Education Fund",
-    status: "completed"
-  },
-  {
-    id: "2",
-    amount: 50,
-    date: "2024-03-01",
-    campaign: "Community Garden",
-    status: "completed"
-  }
-];
-
-const suggestedProjects = [
-  {
-    id: 1,
-    title: "Education Support Program",
-    description: "Help provide educational resources to underprivileged children",
-    target: 5000,
-    raised: 3500,
-    image: "https://images.unsplash.com/photo-1497633762265-9d179a990aa6?auto=format&fit=crop&q=80"
-  },
-  {
-    id: 2,
-    title: "Community Health Initiative",
-    description: "Support local health programs and medical resources",
-    target: 10000,
-    raised: 6000,
-    image: "https://images.unsplash.com/photo-1576091160399-112ba8d25d1d?auto=format&fit=crop&q=80"
-  }
-];
+const DEFAULT_DONOR: Donor = {
+  id: '',
+  firstName: '',
+  lastName: '',
+  email: '',
+  phone: '',
+  address: '',
+  preferredCauses: [],
+  donationFrequency: 'one-time',
+  isAnonymous: false,
+  receiveUpdates: true,
+  totalDonated: 0,
+  donationCount: 0,
+  createdAt: '',
+  updatedAt: ''
+};
 
 const DonorDashboard = () => {
+  const { user, loading: authLoading } = useAuth();
+  const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState('overview');
-  const [notifications, setNotifications] = useState(2);
+  const [donor, setDonor] = useState<Donor | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
-  const mockDonor = {
-    firstName: "John",
-    lastName: "Doe",
-    email: "john.doe@example.com",
-    phone: "(555) 123-4567",
-    address: "123 Main St, Anytown, ST 12345",
-    joinDate: "January 2024"
+  useEffect(() => {
+    // Redirect if not authenticated
+    if (!authLoading && !user) {
+      navigate('/login');
+      return;
+    }
+
+    // Fetch donor data if authenticated
+    if (user) {
+      fetchDonorData();
+    }
+  }, [user, authLoading, navigate]);
+
+  const fetchDonorData = async () => {
+    if (!user?.uid) return;
+    
+    setLoading(true);
+    setError(null);
+    
+    try {
+      // Fetch user document
+      const userDocRef = doc(db, 'users', user.uid);
+      const userDoc = await getDoc(userDocRef);
+      
+      if (!userDoc.exists()) {
+        throw new Error('User document not found');
+      }
+      
+      const userData = userDoc.data();
+      
+      // Verify user is a donor
+      if (userData.role !== 'DONOR') {
+        navigate('/unauthorized');
+        return;
+      }
+      
+      // Fetch donor profile
+      const donorProfileRef = doc(db, 'donor_profiles', user.uid);
+      const donorProfileDoc = await getDoc(donorProfileRef);
+      
+      if (!donorProfileDoc.exists()) {
+        console.warn('Donor profile not found, creating default profile');
+        // If no donor profile exists, use default values
+        setDonor({
+          ...DEFAULT_DONOR,
+          id: user.uid,
+          email: user.email || '',
+          firstName: userData.firstName || '',
+          lastName: userData.lastName || '',
+          phone: userData.phone || '',
+        });
+      } else {
+        // Combine user data with donor profile
+        const donorProfileData = donorProfileDoc.data();
+        setDonor({
+          id: user.uid,
+          email: user.email || '',
+          firstName: userData.firstName || '',
+          lastName: userData.lastName || '',
+          phone: userData.phone || '',
+          ...donorProfileData,
+        });
+      }
+    } catch (err) {
+      console.error('Error fetching donor data:', err);
+      setError('Failed to load donor data. Please refresh the page or contact support.');
+    } finally {
+      setLoading(false);
+    }
   };
 
-  const tabs = [
-    { id: 'overview', label: 'Overview', icon: BarChart2 },
-    { id: 'donations', label: 'My Donations', icon: History },
-    { id: 'recurring', label: 'Recurring Giving', icon: Clock },
-    { id: 'messages', label: 'Messages', icon: MessageSquare },
-    { id: 'payments', label: 'Payment Methods', icon: CreditCard },
-    { id: 'documents', label: 'Tax Documents', icon: FileText },
-    { id: 'settings', label: 'Settings', icon: Settings },
-  ];
+  if (loading || authLoading) {
+    return (
+      <div className="flex justify-center items-center h-screen bg-gray-50">
+        <CircularProgress color="secondary" />
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="p-6 bg-gray-50 min-h-screen">
+        <Alert severity="error">
+          <AlertTitle>Error</AlertTitle>
+          {error}
+        </Alert>
+      </div>
+    );
+  }
+
+  if (!donor) {
+    return (
+      <div className="p-6 bg-gray-50 min-h-screen">
+        <Alert severity="warning">
+          <AlertTitle>Profile Not Found</AlertTitle>
+          Your donor profile could not be loaded. Please contact support.
+        </Alert>
+      </div>
+    );
+  }
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      {/* Top Navigation Bar */}
-      <div className="bg-white shadow">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex justify-between h-16">
-            <div className="flex overflow-x-auto">
-              {tabs.map((tab) => (
-                <button
-                  key={tab.id}
-                  onClick={() => setActiveTab(tab.id)}
-                  className={`inline-flex items-center px-4 border-b-2 text-sm font-medium whitespace-nowrap ${
-                    activeTab === tab.id
-                      ? 'border-rose-500 text-rose-600'
-                      : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-                  }`}
-                >
-                  <tab.icon className="h-5 w-5 mr-2" />
-                  {tab.label}
-                </button>
-              ))}
-            </div>
-            <div className="flex items-center space-x-4">
-              <Link
-                to="/donate"
-                className="bg-rose-600 text-white px-4 py-2 rounded-md hover:bg-rose-700 transition flex items-center"
-              >
-                <Heart className="h-5 w-5 mr-2" />
-                Donate Now
-              </Link>
-              <button className="relative p-2 text-gray-400 hover:text-gray-500">
-                <Bell className="h-6 w-6" />
-                {notifications > 0 && (
-                  <span className="absolute top-0 right-0 block h-2 w-2 rounded-full bg-rose-500 ring-2 ring-white" />
-                )}
-              </button>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Main Content */}
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        <div className="space-y-8">
-          {activeTab === 'overview' && (
-            <>
-              <SuggestedProjects projects={suggestedProjects} />
-              <DonorProfile donor={mockDonor} />
-              <DonorStats />
-              <DonorAnalytics donations={mockDonations} />
-            </>
-          )}
-
-          {activeTab === 'donations' && (
-            <div className="bg-white rounded-lg shadow">
-              <DonationHistory />
-            </div>
-          )}
-
-          {activeTab === 'recurring' && (
-            <div className="bg-white rounded-lg shadow p-6">
-              <div className="flex justify-between items-center mb-6">
-                <h3 className="text-lg font-semibold text-gray-900">Active Recurring Donations</h3>
-                <button className="bg-rose-600 text-white px-4 py-2 rounded-md hover:bg-rose-700 transition">
-                  Set Up New Recurring Donation
-                </button>
-              </div>
-              <RecurringDonations />
-            </div>
-          )}
-
-          {activeTab === 'messages' && (
-            <MessageCenter />
-          )}
-
-          {activeTab === 'payments' && (
-            <PaymentMethods />
-          )}
-
-          {activeTab === 'documents' && (
-            <TaxDocuments />
-          )}
-
-          {activeTab === 'settings' && (
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-              <div className="space-y-8">
-                <div className="bg-white rounded-lg shadow p-6">
-                  <h3 className="text-lg font-semibold text-gray-900 mb-6">Profile Information</h3>
-                  <DonorProfile donor={mockDonor} />
-                </div>
-                <SecuritySettings />
-              </div>
-              <div className="space-y-8">
-                <EmailPreferences />
-                <PaymentMethods />
-              </div>
-            </div>
-          )}
-        </div>
-      </div>
-
-      {/* Fixed Donate Button (Mobile) */}
-      <div className="lg:hidden fixed bottom-4 right-4">
-        <Link
-          to="/donate"
-          className="bg-rose-600 text-white p-4 rounded-full shadow-lg hover:bg-rose-700 transition flex items-center justify-center"
-        >
-          <Heart className="h-6 w-6" />
-        </Link>
+    <div className="flex h-screen bg-gray-50">
+      <DonorSidebar activeTab={activeTab} setActiveTab={setActiveTab} />
+      <div className="flex-1 flex flex-col overflow-hidden md:ml-64">
+        <DonorHeader donor={donor} />
+        <main className="flex-1 overflow-y-auto p-4">
+          {activeTab === 'overview' && <DonorOverview donor={donor} />}
+          {activeTab === 'projects' && <DonorProjects donor={donor} />}
+          {activeTab === 'donations' && <DonorDonations donor={donor} />}
+          {activeTab === 'settings' && <DonorSettings donor={donor} refreshData={fetchDonorData} />}
+        </main>
       </div>
     </div>
   );

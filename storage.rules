@@ -1,0 +1,96 @@
+rules_version = '2';
+
+// Craft rules based on data in your Firestore database
+// allow write: if firestore.get(
+//    /databases/(default)/documents/users/$(request.auth.uid)).data.isAdmin;
+service firebase.storage {
+  match /b/{bucket}/o {
+    // Helper functions
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+    
+    function isAdmin() {
+      return isAuthenticated() && request.auth.token.role == 'ADMIN';
+    }
+    
+    function isModerator() {
+      return isAuthenticated() && 
+        (request.auth.token.role == 'MODERATOR' || request.auth.token.role == 'ADMIN');
+    }
+    
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+    
+    function isImageType() {
+      return request.resource.contentType.matches('image/.*');
+    }
+    
+    function isDocumentType() {
+      return request.resource.contentType.matches('application/pdf') ||
+             request.resource.contentType.matches('application/msword') ||
+             request.resource.contentType.matches('application/vnd.openxmlformats-officedocument.wordprocessingml.document');
+    }
+    
+    function isFileSizeValid() {
+      return request.resource.size < 5 * 1024 * 1024; // 5MB limit
+    }
+    
+    // Default deny all
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+    
+    // User avatars
+    match /avatars/{userId}/{fileName} {
+      // Anyone can read avatars
+      allow read: if true;
+      
+      // Users can upload their own avatar
+      // File must be an image and less than 5MB
+      allow write: if isOwner(userId) && isImageType() && isFileSizeValid();
+    }
+    
+    // Media library
+    match /media/{mediaId}/{fileName} {
+      // Anyone can read media
+      allow read: if true;
+      
+      // Only admins can upload, update, or delete media
+      allow write: if isAdmin() && isFileSizeValid();
+    }
+    
+    // Project images
+    match /projects/{projectId}/{fileName} {
+      // Anyone can read project images
+      allow read: if true;
+      
+      // Only admins can upload, update, or delete project images
+      allow write: if isAdmin() && isImageType() && isFileSizeValid();
+    }
+    
+    // Volunteer documents
+    match /volunteers/{userId}/{fileName} {
+      // Volunteers can read their own documents
+      // Admins and moderators can read all volunteer documents
+      allow read: if isOwner(userId) || isModerator();
+      
+      // Volunteers can upload their own documents
+      // File must be a document and less than 5MB
+      allow write: if isOwner(userId) && isDocumentType() && isFileSizeValid();
+    }
+    
+    // Temporary uploads (for processing)
+    match /temp/{userId}/{fileName} {
+      // Users can read their own temporary uploads
+      allow read: if isOwner(userId);
+      
+      // Users can upload temporary files
+      // Files must be less than 5MB
+      allow write: if isOwner(userId) && isFileSizeValid();
+      
+      // Temporary files are automatically deleted after 24 hours
+    }
+  }
+}

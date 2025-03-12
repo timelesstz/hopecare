@@ -16,7 +16,7 @@ const ProtectedRoute: React.FC<ProtectedRouteProps> = ({
   children, 
   requiredRole 
 }) => {
-  const { isAuthenticated, user, loading } = useFirebaseAuth();
+  const { isAuthenticated, user, loading, checkUserRole } = useFirebaseAuth();
   const location = useLocation();
   const [authorized, setAuthorized] = useState<boolean | null>(null);
 
@@ -34,35 +34,11 @@ const ProtectedRoute: React.FC<ProtectedRouteProps> = ({
         return;
       }
 
-      // Check if user has the required role
-      if (user) {
-        // Check direct role match
-        if (user.role === requiredRole) {
-          setAuthorized(true);
-          return;
-        }
-
-        // Check custom claims
-        if (user.customClaims) {
-          if (user.customClaims.role === requiredRole) {
-            setAuthorized(true);
-            return;
-          }
-
-          // Special case for admin
-          if (requiredRole === 'ADMIN' && user.customClaims.isAdmin === true) {
-            setAuthorized(true);
-            return;
-          }
-        }
-
-        // User doesn't have the required role
-        setAuthorized(false);
-      } else {
-        setAuthorized(false);
-      }
+      // Use the checkUserRole function from FirebaseAuthContext
+      const hasRequiredRole = checkUserRole(requiredRole);
+      setAuthorized(hasRequiredRole);
     }
-  }, [isAuthenticated, user, loading, requiredRole]);
+  }, [isAuthenticated, user, loading, requiredRole, checkUserRole]);
 
   // Show loading spinner while checking authentication
   if (loading || authorized === null) {

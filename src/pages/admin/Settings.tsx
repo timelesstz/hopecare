@@ -6,6 +6,7 @@ import { Save, Settings as SettingsIcon, AlertCircle, Check, Mail, Globe, Dollar
 import { toast } from 'react-hot-toast';
 import { safeFirestoreOperation, isMissingCollectionError } from '../../utils/firestoreRetry';
 import { logFirestoreError } from '../../utils/firestoreErrorHandler';
+import LoadingSpinner from '../../components/ui/LoadingSpinner';
 
 interface SystemSettings {
   siteName: string;
@@ -78,7 +79,6 @@ const SettingsPage: React.FC = () => {
       
       const settingsRef = collection(db, 'settings');
       const systemSettings = {
-        id: 'system_settings',
         siteName: 'HopeCare',
         siteDescription: 'Empowering communities through hope and care',
         contactEmail: 'contact@hopecare.org',
@@ -95,16 +95,22 @@ const SettingsPage: React.FC = () => {
         defaultLanguage: 'en',
         termsUrl: '/terms',
         privacyUrl: '/privacy',
-        lastUpdated: serverTimestamp(),
+        lastUpdated: new Date().toISOString(),
         updatedBy: user?.email || 'system',
-        created_at: serverTimestamp()
+        created_at: new Date().toISOString()
       };
       
-      await addDoc(settingsRef, systemSettings);
+      const docRef = await addDoc(settingsRef, systemSettings);
+      
+      // Add the document ID to the settings object for state update
+      const settingsWithId = {
+        ...systemSettings,
+        id: docRef.id
+      };
       
       toast.success('Settings collection created successfully!');
       setCollectionExists(true);
-      setSettings(systemSettings);
+      setSettings(settingsWithId);
     } catch (error) {
       console.error('Error creating settings collection:', error);
       toast.error('Failed to create settings collection');
@@ -140,7 +146,8 @@ const SettingsPage: React.FC = () => {
 
       const result = await safeFirestoreOperation(
         async () => {
-          const settingsQuery = query(collection(db, 'settings'), where('id', '==', 'system_settings'));
+          // Get all documents from the settings collection
+          const settingsQuery = query(collection(db, 'settings'), limit(1));
           const settingsSnapshot = await getDocs(settingsQuery);
           
           if (settingsSnapshot.empty) {
@@ -164,16 +171,20 @@ const SettingsPage: React.FC = () => {
                 defaultLanguage: 'en',
                 termsUrl: '/terms',
                 privacyUrl: '/privacy',
-                lastUpdated: serverTimestamp(),
+                lastUpdated: new Date().toISOString(),
                 updatedBy: user?.email || 'system'
               }
             };
           }
           
-          // Settings found, return the data
+          // Settings found, return the data with the document ID
+          const doc = settingsSnapshot.docs[0];
           return { 
             empty: false, 
-            data: settingsSnapshot.docs[0].data() as SystemSettings 
+            data: {
+              id: doc.id,
+              ...doc.data()
+            } as SystemSettings 
           };
         },
         'Failed to load settings. Please try again later.',
@@ -187,59 +198,16 @@ const SettingsPage: React.FC = () => {
       }
       
       if (result.empty) {
+        // No settings found, use default settings
         setSettings(result.defaultSettings);
-        // Inform user that we're using default settings
-        toast.info('Using default settings. Save to create settings in the database.');
       } else {
+        // Settings found, use the data
         setSettings(result.data);
       }
     } catch (err) {
       // This catch is for any errors not caught by safeFirestoreOperation
       logFirestoreError(err, 'settings-fetch-outer');
-      
-      // Special handling for missing collection errors
-      if (isMissingCollectionError(err)) {
-        setError('Failed to load settings. The settings collection might not exist.');
-        
-        // Create a message to redirect to dashboard to create the collection
-        toast.error(
-          'Settings collection might not exist. Go to Dashboard to create it.',
-          { duration: 5000 }
-        );
-        
-        // After a short delay, redirect to dashboard
-        setTimeout(() => {
-          window.location.href = '/admin/dashboard';
-        }, 3000);
-        
-        return;
-      }
-      
-      // Special handling for missing index errors
-      if (err instanceof Error && err.message.includes('requires an index')) {
-        const indexUrl = err.message.match(/https:\/\/console\.firebase\.google\.com[^\s]*/)?.[0];
-        if (indexUrl) {
-          setError(`This query requires a Firestore index. Please create it using this URL: ${indexUrl}`);
-          
-          toast.error(
-            `Missing Firestore index. Create it here: ${indexUrl}`,
-            { 
-              duration: 10000,
-              style: {
-                maxWidth: '500px',
-                wordBreak: 'break-word'
-              }
-            }
-          );
-          return;
-        }
-      }
-      
       setError('An unexpected error occurred while loading settings');
-      toast.error('An unexpected error occurred. Please try again later.');
-      
-      // Fallback to default settings
-      setSettings(defaultSettings);
     } finally {
       setLoading(false);
     }
@@ -252,29 +220,26 @@ const SettingsPage: React.FC = () => {
       
       const result = await safeFirestoreOperation(
         async () => {
-          // Check if settings collection exists
-          const settingsQuery = query(collection(db, 'settings'), where('id', '==', 'system_settings'));
-          const settingsSnapshot = await getDocs(settingsQuery);
-          
           const updatedSettings = {
             ...settings,
-            lastUpdated: serverTimestamp(),
+            lastUpdated: new Date().toISOString(),
             updatedBy: user?.email || 'system'
           };
           
-          if (settingsSnapshot.empty) {
+          // Remove the id field from the data to be saved
+          const { id, ...settingsData } = updatedSettings;
+          
+          if (!id) {
             // Create new settings document
             const docRef = await addDoc(collection(db, 'settings'), {
-              ...updatedSettings,
-              id: 'system_settings',
-              created_at: serverTimestamp()
+              ...settingsData,
+              created_at: new Date().toISOString()
             });
             return { id: docRef.id, isNew: true };
           } else {
             // Update existing settings document
-            const settingsDoc = settingsSnapshot.docs[0];
-            await updateDoc(doc(db, 'settings', settingsDoc.id), updatedSettings);
-            return { id: settingsDoc.id, isNew: false };
+            await updateDoc(doc(db, 'settings', id), settingsData);
+            return { id, isNew: false };
           }
         },
         'Failed to save settings. Please try again.',
@@ -312,7 +277,7 @@ const SettingsPage: React.FC = () => {
   if (loading) {
     return (
       <div className="flex justify-center items-center h-64">
-        <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500"></div>
+        <LoadingSpinner size="large" color="primary" />
       </div>
     );
   }
@@ -328,7 +293,7 @@ const SettingsPage: React.FC = () => {
         >
           {saving ? (
             <>
-              <div className="animate-spin rounded-full h-4 w-4 border-t-2 border-b-2 border-white mr-2"></div>
+              <LoadingSpinner size="small" color="white" />
               Saving...
             </>
           ) : (
@@ -363,7 +328,7 @@ const SettingsPage: React.FC = () => {
         <>
           {loading ? (
             <div className="flex justify-center items-center h-64">
-              <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500"></div>
+              <LoadingSpinner size="large" color="primary" />
             </div>
           ) : error ? (
             <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-md mb-6">

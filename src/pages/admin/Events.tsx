@@ -7,6 +7,7 @@ import { motion } from 'framer-motion';
 import { toast } from 'react-hot-toast';
 import { safeFirestoreOperation, isMissingCollectionError } from '../../utils/firestoreRetry';
 import { logFirestoreError } from '../../utils/firestoreErrorHandler';
+import LoadingSpinner from '../../components/ui/LoadingSpinner';
 
 interface Event {
   id: string;
@@ -321,19 +322,37 @@ const EventsPage: React.FC = () => {
       const sampleEvent = {
         title: 'Welcome to HopeCare Events',
         description: 'This is a sample event to help you get started with the events feature.',
-        date: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000), // One week from now
+        date: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(), // One week from now
         location: 'HopeCare Community Center',
         organizer: 'HopeCare Team',
         status: 'upcoming',
         capacity: 50,
         registered: 0,
-        created_at: serverTimestamp(),
-        updated_at: serverTimestamp(),
-        image_url: '',
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+        image_url: 'https://source.unsplash.com/random/800x600/?charity',
         tags: ['sample', 'welcome']
       };
       
       await addDoc(eventsRef, sampleEvent);
+      
+      // Add a second sample event for better initial data
+      const secondEvent = {
+        title: 'Volunteer Orientation',
+        description: 'Join us for an orientation session for new volunteers. Learn about our mission, programs, and how you can make a difference.',
+        date: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString(), // Two weeks from now
+        location: 'HopeCare Training Room',
+        organizer: 'Volunteer Coordinator',
+        status: 'upcoming',
+        capacity: 30,
+        registered: 5,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+        image_url: 'https://source.unsplash.com/random/800x600/?volunteer',
+        tags: ['volunteer', 'orientation', 'training']
+      };
+      
+      await addDoc(eventsRef, secondEvent);
       
       toast.success('Events collection created successfully!');
       setCollectionExists(true);
@@ -394,9 +413,9 @@ const EventsPage: React.FC = () => {
         </div>
       ) : (
         <>
-          {loading && !showAddEvent && !editingEvent ? (
+          {loading ? (
             <div className="flex justify-center items-center h-64">
-              <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-rose-500"></div>
+              <LoadingSpinner size="large" color="primary" />
             </div>
           ) : error ? (
             <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-md mb-6">

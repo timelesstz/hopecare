@@ -1,5 +1,5 @@
 import { motion } from 'framer-motion';
-import { Heart, Users, DollarSign, Star } from 'lucide-react';
+import { Heart, Users, DollarSign, Star, Check, Sparkles, ArrowRight } from 'lucide-react';
 import { useAnalytics } from '@/hooks/useAnalytics';
 
 interface DonationTierProps {
@@ -9,8 +9,9 @@ interface DonationTierProps {
     amount: number;
     description: string;
     benefits: string[];
-    icon: 'heart' | 'users' | 'dollar' | 'star';
+    icon: string;
     popular?: boolean;
+    impact?: string;
   };
   isSelected: boolean;
   onSelect: () => void;
@@ -71,27 +72,37 @@ const DonationTier: React.FC<DonationTierProps> = ({
 
   return (
     <motion.div
-      whileHover={{ scale: 1.02 }}
+      whileHover={{ scale: 1.02, boxShadow: '0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04)' }}
       whileTap={{ scale: 0.98 }}
       onClick={handleSelect}
       className={`
         relative rounded-xl overflow-hidden cursor-pointer
         transition-all duration-200 group
         ${isSelected
-          ? 'ring-2 ring-rose-500 shadow-lg'
-          : 'hover:shadow-md border-2 border-gray-100'
+          ? 'ring-2 ring-rose-500 shadow-lg bg-rose-50'
+          : 'hover:shadow-md border-2 border-gray-100 bg-white'
         }
       `}
+      role="button"
+      aria-pressed={isSelected}
+      tabIndex={0}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          handleSelect();
+        }
+      }}
     >
       {tier.popular && (
-        <div className="absolute top-0 right-0">
-          <div className="bg-rose-500 text-white text-xs font-semibold px-3 py-1 rounded-bl-lg">
-            Popular
+        <div className="absolute top-0 right-0 left-0">
+          <div className="bg-rose-500 text-white text-xs font-semibold px-3 py-2 text-center">
+            MOST POPULAR
+            <Sparkles className="h-3 w-3 inline-block ml-1" />
           </div>
         </div>
       )}
 
-      <div className="p-6">
+      <div className={`p-6 ${tier.popular ? 'pt-10' : ''}`}>
         <div className="flex items-center gap-3 mb-4">
           <div className={`
             p-2 rounded-lg
@@ -116,27 +127,63 @@ const DonationTier: React.FC<DonationTierProps> = ({
 
         <p className="text-gray-600 mb-4">{tier.description}</p>
 
-        <div className="space-y-2">
+        {tier.impact && (
+          <motion.div 
+            className="mb-4 p-3 bg-green-50 rounded-lg border border-green-100"
+            initial={{ opacity: 0.8 }}
+            whileHover={{ opacity: 1, scale: 1.02 }}
+          >
+            <p className="text-sm text-green-700 font-medium flex items-start">
+              <Sparkles className="h-4 w-4 mr-2 mt-0.5 text-green-500 flex-shrink-0" />
+              <span>{tier.impact}</span>
+            </p>
+          </motion.div>
+        )}
+
+        <div className="space-y-2 mb-6">
           {tier.benefits.map((benefit, index) => (
-            <div key={index} className="flex items-center gap-2">
-              <div className={`
-                h-1.5 w-1.5 rounded-full
-                ${isSelected ? 'bg-rose-500' : 'bg-gray-400'}
-              `} />
+            <motion.div 
+              key={index} 
+              className="flex items-start gap-2"
+              initial={{ opacity: 0, x: -10 }}
+              animate={{ opacity: 1, x: 0 }}
+              transition={{ delay: index * 0.1 }}
+            >
+              <div className="mt-1 flex-shrink-0">
+                {isSelected ? (
+                  <Check className="h-4 w-4 text-rose-500" />
+                ) : (
+                  <div className="h-1.5 w-1.5 rounded-full bg-gray-400 mt-1" />
+                )}
+              </div>
               <span className="text-sm text-gray-600">{benefit}</span>
-            </div>
+            </motion.div>
           ))}
         </div>
 
-        <motion.div
-          initial={false}
-          animate={{ opacity: isSelected ? 1 : 0 }}
-          className="absolute bottom-4 right-4"
+        <motion.button
+          whileHover={{ scale: 1.03 }}
+          whileTap={{ scale: 0.98 }}
+          className={`
+            w-full mt-2 flex justify-center items-center px-4 py-2 rounded-md
+            text-sm font-medium transition-colors
+            ${isSelected 
+              ? 'bg-rose-500 text-white hover:bg-rose-600' 
+              : 'bg-gray-100 text-gray-700 hover:bg-gray-200 group-hover:bg-rose-100 group-hover:text-rose-700'
+            }
+          `}
+          onClick={(e) => {
+            // Prevent the click from bubbling up to the parent div
+            e.stopPropagation();
+            handleSelect();
+          }}
         >
-          <div className="bg-rose-500 text-white p-1 rounded-full">
-            <Heart className="w-4 h-4" />
-          </div>
-        </motion.div>
+          {isSelected ? (
+            <>Selected</>
+          ) : (
+            <>Choose ${tier.amount} {donationType === 'monthly' && `/${getIntervalLabel()}`} <ArrowRight className="ml-1 h-3 w-3" /></>
+          )}
+        </motion.button>
       </div>
     </motion.div>
   );

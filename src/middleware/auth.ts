@@ -1,6 +1,14 @@
 import { NextApiRequest, NextApiResponse } from 'next';
 // Supabase client import removed - using Firebase instead
 import { db, auth } from '../lib/firebase';
+import { 
+  collection, 
+  query, 
+  where, 
+  getDocs, 
+  Timestamp 
+} from 'firebase/firestore';
+import { getAuth, verifyIdToken } from 'firebase-admin/auth';
 import { rateLimit } from '../utils/rateLimit';
 import { verifyToken } from '../utils/jwt';
 import { userService } from '../services/userService';
@@ -44,22 +52,37 @@ export const withAuth = (
       const token = authHeader.split(' ')[1];
       
       try {
-        // Verify JWT token
-        const decoded = verifyToken(token);
+        // Verify Firebase ID token
+        const decodedToken = await getAuth().verifyIdToken(token);
+        const uid = decodedToken.uid;
         
-        // Check if session is valid
-        const { data: session } = await supabase
-          .from('user_sessions')
-          .select('*')
-          .eq('token', token)
-          .single();
-
-        if (!session || new Date(session.expires_at) < new Date()) {
+        // Check if session is valid in Firestore
+        const sessionsCollection = collection(db, 'user_sessions');
+        const sessionQuery = query(
+          sessionsCollection,
+          where('user_id', '==', uid),
+          where('revoked', '==', false)
+        );
+        
+        const sessionSnapshot = await getDocs(sessionQuery);
+        
+        if (sessionSnapshot.empty) {
+          return res.status(401).json({ error: 'No valid session found' });
+        }
+        
+        // Check if any session is still valid
+        const now = new Date();
+        const validSession = sessionSnapshot.docs.find(doc => {
+          const session = doc.data();
+          return new Date(session.expires_at) > now;
+        });
+        
+        if (!validSession) {
           return res.status(401).json({ error: 'Session expired' });
         }
 
         // Get user details and permissions
-        const user = await userService.getUserWithProfile(decoded.sub);
+        const user = await userService.getUserWithProfile(uid);
         if (!user) {
           return res.status(401).json({ error: 'User not found' });
         }

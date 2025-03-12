@@ -17,7 +17,7 @@ const VolunteerAuth = () => {
   // Redirect if already authenticated
   useEffect(() => {
     if (isAuthenticated) {
-      navigate('/volunteer/dashboard');
+      navigate('/volunteer-dashboard');
     }
   }, [isAuthenticated, navigate]);
 

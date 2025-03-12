@@ -3,22 +3,44 @@ import { render as rtlRender } from '@testing-library/react';
 import { BrowserRouter } from 'react-router-dom';
 import { AuthProvider } from '../context/AuthContext';
 import { vi } from 'vitest';
+import { mockAuth, mockFirestore, mockStorage } from '../test/mockFirebase';
 
-// Mock Supabase client
-vi.mock('../lib/supabase', () => ({
-  supabase: {
-    auth: {
-      signIn: vi.fn(),
-      signOut: vi.fn(),
-      user: vi.fn(),
-    },
-    from: vi.fn(() => ({
-      select: vi.fn(),
-      insert: vi.fn(),
-      update: vi.fn(),
-      delete: vi.fn(),
-    })),
-  },
+// Mock Firebase modules
+vi.mock('../lib/firebase', () => ({
+  auth: mockAuth,
+  db: mockFirestore,
+  storage: mockStorage,
+}));
+
+// Mock Firebase auth functions
+vi.mock('firebase/auth', () => ({
+  signInWithEmailAndPassword: vi.fn(),
+  createUserWithEmailAndPassword: vi.fn(),
+  signOut: vi.fn(),
+  onAuthStateChanged: vi.fn(),
+}));
+
+// Mock Firebase firestore functions
+vi.mock('firebase/firestore', () => ({
+  collection: vi.fn(),
+  doc: vi.fn(),
+  getDoc: vi.fn(),
+  getDocs: vi.fn(),
+  addDoc: vi.fn(),
+  updateDoc: vi.fn(),
+  deleteDoc: vi.fn(),
+  query: vi.fn(),
+  where: vi.fn(),
+  orderBy: vi.fn(),
+}));
+
+// Mock Firebase storage functions
+vi.mock('firebase/storage', () => ({
+  ref: vi.fn(),
+  uploadBytes: vi.fn(),
+  getDownloadURL: vi.fn(),
+  deleteObject: vi.fn(),
+  listAll: vi.fn(),
 }));
 
 // Custom render function that includes providers

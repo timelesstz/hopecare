@@ -6,6 +6,7 @@ import { Edit2, Trash2, AlertCircle, Search, CheckCircle, XCircle, DollarSign, M
 import { toast } from 'react-hot-toast';
 import { safeFirestoreOperation } from '../../../utils/firestoreRetry';
 import { logFirestoreError, isPermissionError } from '../../../utils/firestoreErrorHandler';
+import LoadingSpinner from '../../../components/ui/LoadingSpinner';
 
 interface Donor {
   id: string;
@@ -435,7 +436,7 @@ const DonorsPage: React.FC = () => {
 
           {loading && !editingDonor ? (
             <div className="flex justify-center items-center h-64">
-              <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-rose-500"></div>
+              <LoadingSpinner size="large" color="primary" />
             </div>
           ) : error ? (
             <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-md mb-6">
@@ -682,126 +683,12 @@ const DonorsPage: React.FC = () => {
                       </div>
                     </div>
                   </div>
-                  <div className="flex justify-end space-x-2 mt-6">
-                    <button
-                      type="button"
-                      onClick={() => setEditingDonor(null)}
-                      className="px-4 py-2 border border-gray-300 text-gray-700 rounded-md hover:bg-gray-50"
-                    >
-                      Cancel
-                    </button>
-                    <button
-                      type="submit"
-                      className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
-                      disabled={loading}
-                    >
-                      {loading ? 'Updating...' : 'Update Donor'}
-                    </button>
-                  </div>
-                </form>
-              </div>
-            </div>
-          )}
-
-          {/* Add Donor Modal */}
-          {addingDonor && (
-            <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-              <div className="bg-white rounded-lg p-6 max-w-md w-full">
-                <h2 className="text-xl font-bold mb-4">Add New Donor</h2>
-                <form onSubmit={handleAddDonor}>
-                  <div className="space-y-4">
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Name</label>
-                      <input
-                        type="text"
-                        value={newDonor.name}
-                        onChange={(e) => setNewDonor({ ...newDonor, name: e.target.value })}
-                        className="w-full p-2 border border-gray-300 rounded-md"
-                        required
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
-                      <input
-                        type="email"
-                        value={newDonor.email}
-                        onChange={(e) => setNewDonor({ ...newDonor, email: e.target.value })}
-                        className="w-full p-2 border border-gray-300 rounded-md"
-                        required
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Phone</label>
-                      <input
-                        type="text"
-                        value={newDonor.phone}
-                        onChange={(e) => setNewDonor({ ...newDonor, phone: e.target.value })}
-                        className="w-full p-2 border border-gray-300 rounded-md"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Preferences</label>
-                      <div className="space-y-2">
-                        <div className="flex items-center">
-                          <input
-                            type="checkbox"
-                            id="new-anonymous"
-                            checked={newDonor.isAnonymous}
-                            onChange={() => setNewDonor({ ...newDonor, isAnonymous: !newDonor.isAnonymous })}
-                            className="h-4 w-4 text-rose-600 focus:ring-rose-500 border-gray-300 rounded"
-                          />
-                          <label htmlFor="new-anonymous" className="ml-2 block text-sm text-gray-900">
-                            Anonymous Donor
-                          </label>
-                        </div>
-                        <div className="flex items-center">
-                          <input
-                            type="checkbox"
-                            id="new-recurring"
-                            checked={newDonor.isRecurring}
-                            onChange={() => setNewDonor({ ...newDonor, isRecurring: !newDonor.isRecurring })}
-                            className="h-4 w-4 text-rose-600 focus:ring-rose-500 border-gray-300 rounded"
-                          />
-                          <label htmlFor="new-recurring" className="ml-2 block text-sm text-gray-900">
-                            Recurring Donor
-                          </label>
-                        </div>
-                      </div>
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Preferred Causes</label>
-                      <div className="grid grid-cols-2 gap-2">
-                        {['Education', 'Health', 'Environment', 'Poverty Relief', 'Community Development', 'Youth Programs', 'Elderly Care', 'Disaster Relief', 'Animal Welfare'].map((cause) => (
-                          <div key={cause} className="flex items-center">
-                            <input
-                              type="checkbox"
-                              id={`new-cause-${cause}`}
-                              checked={newDonor.preferredCauses.includes(cause)}
-                              onChange={() => handleNewDonorCauseChange(cause)}
-                              className="h-4 w-4 text-rose-600 focus:ring-rose-500 border-gray-300 rounded"
-                            />
-                            <label htmlFor={`new-cause-${cause}`} className="ml-2 block text-sm text-gray-900">
-                              {cause}
-                            </label>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  </div>
-                  <div className="flex justify-end space-x-2 mt-6">
-                    <button
-                      type="button"
-                      onClick={() => setAddingDonor(false)}
-                      className="px-4 py-2 border border-gray-300 text-gray-700 rounded-md hover:bg-gray-50"
-                    >
-                      Cancel
-                    </button>
+                  <div className="mt-4">
                     <button
                       type="submit"
                       className="px-4 py-2 bg-rose-600 text-white rounded-md hover:bg-rose-700"
-                      disabled={loading}
                     >
-                      {loading ? 'Adding...' : 'Add Donor'}
+                      Update Donor
                     </button>
                   </div>
                 </form>
@@ -814,4 +701,4 @@ const DonorsPage: React.FC = () => {
   );
 };
 
-export default DonorsPage; 
+export default DonorsPage;

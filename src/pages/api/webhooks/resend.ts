@@ -1,5 +1,6 @@
 // Supabase client import removed - using Firebase instead
-import { db, auth } from '../lib/firebase';
+import { db } from '../../../lib/firebase';
+import { collection, query, where, getDocs, updateDoc, doc } from 'firebase/firestore';
 
 interface ResendWebhookPayload {
   type: string;
@@ -34,23 +35,33 @@ export default async function handler(req, res) {
   try {
     const payload = req.body as ResendWebhookPayload;
 
-    // Update email log with delivery status
-    const { error } = await supabase
-      .from('email_logs')
-      .update({
-        status: payload.data.status,
-        metadata: {
-          ...payload.data,
-          webhook_received_at: new Date().toISOString(),
-        },
-        updated_at: new Date().toISOString(),
-      })
-      .eq('metadata->message_id', payload.email_id);
-
-    if (error) {
-      console.error('Error updating email log:', error);
-      return res.status(500).json({ error: 'Failed to update email log' });
+    // Find the email log with the matching message ID
+    const emailLogsCollection = collection(db, 'email_logs');
+    const emailQuery = query(
+      emailLogsCollection,
+      where('metadata.message_id', '==', payload.email_id)
+    );
+    
+    const querySnapshot = await getDocs(emailQuery);
+    
+    if (querySnapshot.empty) {
+      console.error('Email log not found for message ID:', payload.email_id);
+      return res.status(404).json({ error: 'Email log not found' });
     }
+    
+    // Update the email log with delivery status
+    const emailLogDoc = querySnapshot.docs[0];
+    const emailLogRef = doc(db, 'email_logs', emailLogDoc.id);
+    
+    await updateDoc(emailLogRef, {
+      status: payload.data.status,
+      metadata: {
+        ...emailLogDoc.data().metadata,
+        ...payload.data,
+        webhook_received_at: new Date().toISOString(),
+      },
+      updated_at: new Date().toISOString(),
+    });
 
     return res.status(200).json({ success: true });
   } catch (error) {

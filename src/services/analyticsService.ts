@@ -1,4 +1,13 @@
-import { supabase } from '@/lib/supabaseClient';
+import { db } from '../lib/firebase';
+import { 
+  collection, 
+  query, 
+  where, 
+  getDocs, 
+  Timestamp, 
+  orderBy, 
+  limit 
+} from 'firebase/firestore';
 
 export interface AnalyticsDateRange {
   startDate: Date;
@@ -51,76 +60,106 @@ class AnalyticsService {
   async getDonationAnalytics(dateRange: AnalyticsDateRange): Promise<DonationAnalytics> {
     const { startDate, endDate } = dateRange;
 
-    // Get donations within date range
-    const { data: donations, error: donationsError } = await supabase
-      .from('donations')
-      .select(`
-        amount,
-        created_at,
-        project:projects(id, name),
-        donor:donors(id, first_donation_date)
-      `)
-      .gte('created_at', startDate.toISOString())
-      .lte('created_at', endDate.toISOString());
+    try {
+      // Get donations within date range
+      const donationsCollection = collection(db, 'donations');
+      const donationsQuery = query(
+        donationsCollection,
+        where('created_at', '>=', startDate.toISOString()),
+        where('created_at', '<=', endDate.toISOString())
+      );
+      
+      const donationsSnapshot = await getDocs(donationsQuery);
+      const donations = [];
+      
+      // Process donations and fetch related data
+      for (const donationDoc of donationsSnapshot.docs) {
+        const donationData = donationDoc.data();
+        
+        // Fetch project data if available
+        let projectData = null;
+        if (donationData.project_id) {
+          const projectsCollection = collection(db, 'projects');
+          const projectQuery = query(
+            projectsCollection,
+            where('id', '==', donationData.project_id)
+          );
+          const projectSnapshot = await getDocs(projectQuery);
+          
+          if (!projectSnapshot.empty) {
+            projectData = projectSnapshot.docs[0].data();
+          }
+        }
+        
+        // Fetch donor data
+        let donorData = null;
+        if (donationData.donor_id) {
+          const donorsCollection = collection(db, 'donors');
+          const donorQuery = query(
+            donorsCollection,
+            where('id', '==', donationData.donor_id)
+          );
+          const donorSnapshot = await getDocs(donorQuery);
+          
+          if (!donorSnapshot.empty) {
+            donorData = donorSnapshot.docs[0].data();
+          }
+        }
+        
+        donations.push({
+          ...donationData,
+          project: projectData,
+          donor: donorData
+        });
+      }
 
-    if (donationsError) {
-      console.error('Error fetching donations:', donationsError);
-      throw donationsError;
+      // Get projects data
+      const projectsCollection = collection(db, 'projects');
+      const projectsSnapshot = await getDocs(projectsCollection);
+      const projects = projectsSnapshot.docs.map(doc => doc.data());
+
+      // Process donations by month
+      const donationsByMonth = this.processDonationsByMonth(donations);
+
+      // Process donations by project
+      const donationsByProject = this.processDonationsByProject(donations);
+
+      // Process donor retention
+      const donorRetention = this.processDonorRetention(donations);
+
+      // Calculate impact metrics
+      const impactMetrics = this.calculateImpactMetrics(donations, projects);
+
+      // Calculate top donors
+      const topDonors = this.calculateTopDonors(donations);
+
+      // Calculate donation growth
+      const donationGrowth = await this.calculateGrowthMetrics(donations);
+
+      // Calculate average donation
+      const averageDonation = this.calculateAverageDonation(donations);
+
+      // Calculate recurring donors
+      const recurringDonors = this.calculateRecurringDonors(donations);
+
+      // Calculate donor growth
+      const donorGrowth = this.calculateDonorGrowth(donations);
+
+      return {
+        donationsByMonth,
+        donationsByProject,
+        donorRetention,
+        impactMetrics,
+        topDonors,
+        donationGrowth,
+        averageDonation,
+        recurringDonors,
+        donorGrowth,
+      };
+    } catch (error) {
+      console.error('Error fetching analytics data:', error);
+      throw error;
     }
-
-    // Get projects data
-    const { data: projects, error: projectsError } = await supabase
-      .from('projects')
-      .select(`
-        id,
-        name,
-        lives_impacted,
-        communities_served
-      `);
-
-    if (projectsError) {
-      console.error('Error fetching projects:', projectsError);
-      throw projectsError;
-    }
-
-    // Process donations by month
-    const donationsByMonth = this.processDonationsByMonth(donations);
-
-    // Process donations by project
-    const donationsByProject = this.processDonationsByProject(donations);
-
-    // Process donor retention
-    const donorRetention = this.processDonorRetention(donations);
-
-    // Calculate impact metrics
-    const impactMetrics = this.calculateImpactMetrics(donations, projects);
-
-    // Calculate top donors
-    const topDonors = this.calculateTopDonors(donations);
-
-    // Calculate donation growth
-    const donationGrowth = await this.calculateGrowthMetrics(donations);
-
-    // Calculate average donation
-    const averageDonation = this.calculateAverageDonation(donations);
-
-    // Calculate recurring donors
-    const recurringDonors = this.calculateRecurringDonors(donations);
-
-    // Calculate donor growth
-    const donorGrowth = this.calculateDonorGrowth(donations);
-
-    return {
-      donationsByMonth,
-      donationsByProject,
-      donorRetention,
-      impactMetrics,
-      topDonors,
-      donationGrowth,
-      averageDonation,
-      recurringDonors,
-      donorGrowth,
-    };
   }
 
   private processDonationsByMonth(donations: any[]) {
@@ -165,7 +204,7 @@ class AnalyticsService {
 
     donations.forEach(donation => {
       const month = new Date(donation.created_at).toLocaleString('default', { month: 'short' });
-      const isNewDonor = donation.donor.first_donation_date === donation.created_at;
+      const isNewDonor = donation.donor?.first_donation_date === donation.created_at;
       
       const current = monthlyDonors.get(month) || { newDonors: 0, returningDonors: 0 };
       if (isNewDonor) {
@@ -202,15 +241,25 @@ class AnalyticsService {
     const donorData = new Map();
 
     donations.forEach(donation => {
-      const donorName = `${donation.donor.first_name} ${donation.donor.last_name}`;
-      const current = donorData.get(donorName) || { totalDonated: 0, lastDonation: '', donationCount: 0 };
+      if (!donation.donor) return;
+      
+      const donorName = `${donation.donor.first_name || ''} ${donation.donor.last_name || ''}`.trim() || 'Anonymous';
+      const current = donorData.get(donorName) || { 
+        totalDonated: 0, 
+        lastDonation: '', 
+        donationCount: 0,
+        name: donorName
+      };
+      
       current.totalDonated += donation.amount;
       current.lastDonation = donation.created_at;
       current.donationCount++;
       donorData.set(donorName, current);
     });
 
-    return Array.from(donorData.values()).sort((a, b) => b.totalDonated - a.totalDonated);
+    return Array.from(donorData.values())
+      .sort((a, b) => b.totalDonated - a.totalDonated)
+      .slice(0, 10); // Limit to top 10 donors
   }
 
   private async calculateGrowthMetrics(donations: any[]) {
@@ -240,122 +289,157 @@ class AnalyticsService {
   }
 
   private calculateRecurringDonors(donations: any[]) {
-    const donorIds = new Set(donations.map(d => d.donor_id));
-    const recurringDonors = donations.filter(d => donorIds.has(d.donor_id) && d.donor.first_donation_date !== d.created_at);
+    const donorIds = new Set(donations.filter(d => d.donor_id).map(d => d.donor_id));
+    const recurringDonors = donations.filter(d => 
+      d.donor_id && 
+      donorIds.has(d.donor_id) && 
+      d.donor?.first_donation_date !== d.created_at
+    );
     return recurringDonors.length;
   }
 
   private calculateDonorGrowth(donations: any[]) {
     const now = new Date();
     const monthAgo = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-    const donorIds = new Set(donations.map(d => d.donor_id));
-    const newDonors = donations.filter(d => new Date(d.created_at) >= monthAgo && !donorIds.has(d.donor_id));
-    return newDonors.length;
+    
+    const currentDonors = new Set(
+      donations.filter(d => new Date(d.created_at) >= monthAgo).map(d => d.donor_id)
+    ).size;
+    
+    const previousMonthStart = new Date(now.getFullYear(), now.getMonth() - 2, 1);
+    const previousMonthEnd = new Date(now.getFullYear(), now.getMonth() - 1, 0);
+    
+    const previousDonors = new Set(
+      donations.filter(d => {
+        const date = new Date(d.created_at);
+        return date >= previousMonthStart && date <= previousMonthEnd;
+      }).map(d => d.donor_id)
+    ).size;
+    
+    return previousDonors ? (currentDonors - previousDonors) / previousDonors * 100 : 0;
   }
 
   async getDrillDownData(type: string, id: string, dateRange: AnalyticsDateRange) {
     const { startDate, endDate } = dateRange;
-
-    switch (type) {
-      case 'project': {
-        const { data: projectData, error } = await supabase
-          .from('donations')
-          .select(`
-            amount,
-            created_at,
-            project:projects(id, name, description)
-          `)
-          .eq('project_id', id)
-          .gte('created_at', startDate.toISOString())
-          .lte('created_at', endDate.toISOString());
-
-        if (error) throw error;
-
-        const totalAmount = projectData.reduce((sum, d) => sum + d.amount, 0);
-        const donationCount = projectData.length;
-        const averageDonation = totalAmount / donationCount;
-
-        // Get previous period data for comparison
-        const periodLength = endDate.getTime() - startDate.getTime();
-        const prevStartDate = new Date(startDate.getTime() - periodLength);
-        const prevEndDate = new Date(endDate.getTime() - periodLength);
-
-        const { data: prevData } = await supabase
-          .from('donations')
-          .select('amount')
-          .eq('project_id', id)
-          .gte('created_at', prevStartDate.toISOString())
-          .lte('created_at', prevEndDate.toISOString());
-
-        const prevTotal = prevData?.reduce((sum, d) => sum + d.amount, 0) || 0;
-        const growth = prevTotal ? ((totalAmount - prevTotal) / prevTotal) * 100 : 0;
-
+    
+    try {
+      let data;
+      
+      if (type === 'project') {
+        // Get project details
+        const projectsCollection = collection(db, 'projects');
+        const projectQuery = query(
+          projectsCollection,
+          where('id', '==', id)
+        );
+        const projectSnapshot = await getDocs(projectQuery);
+        
+        if (projectSnapshot.empty) {
+          throw new Error('Project not found');
+        }
+        
+        const projectData = projectSnapshot.docs[0].data();
+        
+        // Get donations for this project
+        const donationsCollection = collection(db, 'donations');
+        const donationsQuery = query(
+          donationsCollection,
+          where('project_id', '==', id),
+          where('created_at', '>=', startDate.toISOString()),
+          where('created_at', '<=', endDate.toISOString())
+        );
+        
+        const donationsSnapshot = await getDocs(donationsQuery);
+        const donations = donationsSnapshot.docs.map(doc => doc.data());
+        
         // Process monthly data
-        const monthlyData = this.processMonthlyData(projectData);
-
-        return {
-          type: 'project',
-          title: projectData[0]?.project?.name || 'Project Details',
-          metrics: [
-            { label: 'Total Raised', value: formatCurrency(totalAmount), change: growth },
-            { label: 'Donations', value: donationCount },
-            { label: 'Average Donation', value: formatCurrency(averageDonation) },
-            { label: 'Active Donors', value: new Set(projectData.map(d => d.donor_id)).size },
-          ],
-          data: monthlyData,
+        const monthlyData = this.processMonthlyData(donations);
+        
+        data = {
+          project: projectData,
+          donations: {
+            total: donations.reduce((sum, d) => sum + d.amount, 0),
+            count: donations.length,
+            average: donations.length ? donations.reduce((sum, d) => sum + d.amount, 0) / donations.length : 0,
+            monthly: monthlyData,
+          },
+        };
+      } else if (type === 'donor') {
+        // Get donor details
+        const donorsCollection = collection(db, 'donors');
+        const donorQuery = query(
+          donorsCollection,
+          where('id', '==', id)
+        );
+        const donorSnapshot = await getDocs(donorQuery);
+        
+        if (donorSnapshot.empty) {
+          throw new Error('Donor not found');
+        }
+        
+        const donorData = donorSnapshot.docs[0].data();
+        
+        // Get donations for this donor
+        const donationsCollection = collection(db, 'donations');
+        const donationsQuery = query(
+          donationsCollection,
+          where('donor_id', '==', id),
+          where('created_at', '>=', startDate.toISOString()),
+          where('created_at', '<=', endDate.toISOString())
+        );
+        
+        const donationsSnapshot = await getDocs(donationsQuery);
+        const donations = donationsSnapshot.docs.map(doc => doc.data());
+        
+        // Process monthly data
+        const monthlyData = this.processMonthlyData(donations);
+        
+        data = {
+          donor: donorData,
+          donations: {
+            total: donations.reduce((sum, d) => sum + d.amount, 0),
+            count: donations.length,
+            average: donations.length ? donations.reduce((sum, d) => sum + d.amount, 0) / donations.length : 0,
+            monthly: monthlyData,
+          },
         };
       }
-
-      case 'donor': {
-        const { data: donorData, error } = await supabase
-          .from('donations')
-          .select(`
-            amount,
-            created_at,
-            donor:donors(id, first_name, last_name)
-          `)
-          .eq('donor_id', id)
-          .gte('created_at', startDate.toISOString())
-          .lte('created_at', endDate.toISOString());
-
-        if (error) throw error;
-
-        const totalDonated = donorData.reduce((sum, d) => sum + d.amount, 0);
-        const donationCount = donorData.length;
-        const averageDonation = totalDonated / donationCount;
-        const projectCount = new Set(donorData.map(d => d.project_id)).size;
-
-        return {
-          type: 'donor',
-          title: `${donorData[0]?.donor?.first_name} ${donorData[0]?.donor?.last_name}`,
-          metrics: [
-            { label: 'Total Donated', value: formatCurrency(totalDonated) },
-            { label: 'Donations', value: donationCount },
-            { label: 'Average Donation', value: formatCurrency(averageDonation) },
-            { label: 'Projects Supported', value: projectCount },
-          ],
-          data: this.processMonthlyData(donorData),
-        };
-      }
-
-      default:
-        throw new Error(`Invalid drill-down type: ${type}`);
+      
+      return data;
+    } catch (error) {
+      console.error(`Error fetching drill-down data for ${type} ${id}:`, error);
+      throw error;
     }
   }
 
   private processMonthlyData(data: any[]) {
     const monthlyData = new Map();
-
+    
     data.forEach(item => {
-      const month = new Date(item.created_at).toLocaleString('default', { month: 'short' });
-      const current = monthlyData.get(month) || { name: month, value: 0 };
-      monthlyData.set(month, {
-        ...current,
-        value: current.value + item.amount,
+      const date = new Date(item.created_at);
+      const month = date.toLocaleString('default', { month: 'short' });
+      const year = date.getFullYear();
+      const key = `${month} ${year}`;
+      
+      const current = monthlyData.get(key) || { amount: 0, count: 0 };
+      monthlyData.set(key, {
+        amount: current.amount + item.amount,
+        count: current.count + 1,
       });
     });
-
-    return Array.from(monthlyData.values());
+    
+    return Array.from(monthlyData, ([month, data]) => ({
+      month,
+      ...data,
+    })).sort((a, b) => {
+      const [aMonth, aYear] = a.month.split(' ');
+      const [bMonth, bYear] = b.month.split(' ');
+      
+      if (aYear !== bYear) return Number(aYear) - Number(bYear);
+      
+      const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+      return months.indexOf(aMonth) - months.indexOf(bMonth);
+    });
   }
 
   async getComparisonData(
@@ -363,43 +447,32 @@ class AnalyticsService {
     comparisonType: 'previous' | 'year' | 'quarter'
   ): Promise<ComparisonData> {
     const { startDate, endDate } = dateRange;
-    const periodLength = endDate.getTime() - startDate.getTime();
-
-    let comparisonStart: Date;
-    let comparisonEnd: Date;
-
-    switch (comparisonType) {
-      case 'previous':
-        comparisonStart = new Date(startDate.getTime() - periodLength);
-        comparisonEnd = new Date(endDate.getTime() - periodLength);
-        break;
-
-      case 'year':
-        comparisonStart = new Date(startDate);
-        comparisonEnd = new Date(endDate);
-        comparisonStart.setFullYear(startDate.getFullYear() - 1);
-        comparisonEnd.setFullYear(endDate.getFullYear() - 1);
-        break;
-
-      case 'quarter':
-        comparisonStart = new Date(startDate);
-        comparisonEnd = new Date(endDate);
-        comparisonStart.setMonth(startDate.getMonth() - 3);
-        comparisonEnd.setMonth(endDate.getMonth() - 3);
-        break;
+    let comparisonStartDate: Date;
+    let comparisonEndDate: Date;
+    
+    // Calculate comparison date range
+    if (comparisonType === 'previous') {
+      const duration = endDate.getTime() - startDate.getTime();
+      comparisonEndDate = new Date(startDate.getTime() - 1);
+      comparisonStartDate = new Date(comparisonEndDate.getTime() - duration);
+    } else if (comparisonType === 'year') {
+      comparisonStartDate = new Date(startDate);
+      comparisonStartDate.setFullYear(startDate.getFullYear() - 1);
+      comparisonEndDate = new Date(endDate);
+      comparisonEndDate.setFullYear(endDate.getFullYear() - 1);
+    } else if (comparisonType === 'quarter') {
+      comparisonStartDate = new Date(startDate);
+      comparisonStartDate.setMonth(startDate.getMonth() - 3);
+      comparisonEndDate = new Date(endDate);
+      comparisonEndDate.setMonth(endDate.getMonth() - 3);
     }
-
-    const analytics = await this.getDonationAnalytics({
-      startDate: comparisonStart,
-      endDate: comparisonEnd,
-    });
-
+    
+    const comparisonDateRange = { startDate: comparisonStartDate, endDate: comparisonEndDate };
+    const comparisonAnalytics = await this.getDonationAnalytics(comparisonDateRange);
+    
     return {
-      dateRange: {
-        startDate: comparisonStart,
-        endDate: comparisonEnd,
-      },
-      analytics,
+      dateRange: comparisonDateRange,
+      analytics: comparisonAnalytics,
     };
   }
 
@@ -408,77 +481,108 @@ class AnalyticsService {
     periods: number,
     periodType: 'day' | 'week' | 'month'
   ): Promise<number[]> {
-    const trend: number[] = [];
-    let currentDate = endDate;
-
-    for (let i = 0; i < periods; i++) {
-      let startDate: Date;
-      let endDate = new Date(currentDate);
-
-      switch (periodType) {
-        case 'day':
-          startDate = new Date(currentDate);
-          startDate.setHours(0, 0, 0, 0);
-          endDate.setHours(23, 59, 59, 999);
-          currentDate.setDate(currentDate.getDate() - 1);
-          break;
-
-        case 'week':
-          startDate = new Date(currentDate);
-          startDate.setDate(currentDate.getDate() - 7);
-          currentDate = startDate;
-          break;
-
-        case 'month':
-          startDate = new Date(currentDate);
-          startDate.setMonth(currentDate.getMonth() - 1);
-          currentDate = startDate;
-          break;
+    const result: number[] = [];
+    
+    try {
+      for (let i = 0; i < periods; i++) {
+        let periodStart: Date;
+        let periodEnd: Date;
+        
+        if (periodType === 'day') {
+          periodEnd = new Date(endDate);
+          periodEnd.setDate(endDate.getDate() - i);
+          periodStart = new Date(periodEnd);
+          periodStart.setHours(0, 0, 0, 0);
+          periodEnd.setHours(23, 59, 59, 999);
+        } else if (periodType === 'week') {
+          periodEnd = new Date(endDate);
+          periodEnd.setDate(endDate.getDate() - (i * 7));
+          periodStart = new Date(periodEnd);
+          periodStart.setDate(periodEnd.getDate() - 6);
+          periodStart.setHours(0, 0, 0, 0);
+          periodEnd.setHours(23, 59, 59, 999);
+        } else {
+          periodEnd = new Date(endDate);
+          periodEnd.setMonth(endDate.getMonth() - i);
+          periodEnd.setDate(new Date(periodEnd.getFullYear(), periodEnd.getMonth() + 1, 0).getDate());
+          periodStart = new Date(periodEnd.getFullYear(), periodEnd.getMonth(), 1);
+          periodStart.setHours(0, 0, 0, 0);
+          periodEnd.setHours(23, 59, 59, 999);
+        }
+        
+        // Get donations for this period
+        const donationsCollection = collection(db, 'donations');
+        const donationsQuery = query(
+          donationsCollection,
+          where('created_at', '>=', periodStart.toISOString()),
+          where('created_at', '<=', periodEnd.toISOString())
+        );
+        
+        const donationsSnapshot = await getDocs(donationsQuery);
+        const periodTotal = donationsSnapshot.docs.reduce(
+          (sum, doc) => sum + doc.data().amount, 
+          0
+        );
+        
+        result.unshift(periodTotal);
       }
-
-      const { data, error } = await supabase
-        .from('donations')
-        .select('amount')
-        .gte('created_at', startDate.toISOString())
-        .lte('created_at', endDate.toISOString());
-
-      if (error) throw error;
-
-      const total = data.reduce((sum, d) => sum + d.amount, 0);
-      trend.unshift(total);
+      
+      return result;
+    } catch (error) {
+      console.error('Error fetching trend data:', error);
+      throw error;
     }
-
-    return trend;
   }
 
   async exportAnalyticsReport(dateRange: AnalyticsDateRange): Promise<Blob> {
-    const analytics = await this.getDonationAnalytics(dateRange);
-    
-    const report = {
-      generatedAt: new Date().toISOString(),
-      dateRange: {
-        from: dateRange.startDate.toISOString(),
-        to: dateRange.endDate.toISOString(),
-      },
-      summary: {
-        totalRaised: analytics.impactMetrics.totalRaised,
-        totalProjects: analytics.impactMetrics.projectsSupported,
-        totalCommunities: analytics.impactMetrics.communitiesServed,
-        livesImpacted: analytics.impactMetrics.livesImpacted,
-      },
-      donationTrends: analytics.donationsByMonth,
-      projectDistribution: analytics.donationsByProject,
-      donorRetention: analytics.donorRetention,
-      topDonors: analytics.topDonors,
-      donationGrowth: analytics.donationGrowth,
-      averageDonation: analytics.averageDonation,
-      recurringDonors: analytics.recurringDonors,
-      donorGrowth: analytics.donorGrowth,
-    };
-
-    return new Blob([JSON.stringify(report, null, 2)], {
-      type: 'application/json',
-    });
+    try {
+      const analytics = await this.getDonationAnalytics(dateRange);
+      
+      // Format the data for CSV export
+      const rows = [
+        ['HopeCare Analytics Report'],
+        [`Date Range: ${dateRange.startDate.toLocaleDateString()} to ${dateRange.endDate.toLocaleDateString()}`],
+        [''],
+        ['Donation Summary'],
+        ['Total Raised', analytics.impactMetrics.totalRaised.toString()],
+        ['Average Donation', analytics.averageDonation.toFixed(2)],
+        ['Recurring Donors', analytics.recurringDonors.toString()],
+        ['Donor Growth', `${analytics.donorGrowth.toFixed(2)}%`],
+        [''],
+        ['Monthly Donations'],
+        ['Month', 'Amount', 'Count'],
+        ...analytics.donationsByMonth.map(item => [
+          item.month,
+          item.amount.toString(),
+          item.count.toString(),
+        ]),
+        [''],
+        ['Donations by Project'],
+        ['Project', 'Amount'],
+        ...analytics.donationsByProject.map(item => [
+          item.name,
+          item.value.toString(),
+        ]),
+        [''],
+        ['Top Donors'],
+        ['Name', 'Total Donated', 'Donation Count', 'Last Donation'],
+        ...analytics.topDonors.map(donor => [
+          donor.name,
+          donor.totalDonated.toString(),
+          donor.donationCount.toString(),
+          new Date(donor.lastDonation).toLocaleDateString(),
+        ]),
+      ];
+      
+      // Convert to CSV
+      const csvContent = rows.map(row => row.join(',')).join('\n');
+      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+      
+      return blob;
+    } catch (error) {
+      console.error('Error exporting analytics report:', error);
+      throw error;
+    }
   }
 }
 

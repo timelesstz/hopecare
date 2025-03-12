@@ -1,4 +1,16 @@
-import { supabase } from './supabaseClient';
+import { db, auth } from '../lib/firebase';
+import { 
+  collection, 
+  addDoc, 
+  query, 
+  where, 
+  getDocs, 
+  serverTimestamp,
+  Timestamp,
+  orderBy,
+  gte,
+  lte
+} from 'firebase/firestore';
 
 export interface AnalyticsEvent {
   id?: string;
@@ -58,11 +70,12 @@ class Analytics {
         throw new Error('Event type is required');
       }
 
-      const { data: userData } = await supabase.auth.getUser();
+      // Get current user from Firebase Auth
+      const currentUser = auth.currentUser;
       
       const analyticsEvent: AnalyticsEvent = {
         ...event,
-        user_id: userData.user?.id,
+        user_id: currentUser?.uid,
         timestamp: new Date().toISOString(),
         session_id: this.sessionId,
         page_url: window.location.href,
@@ -74,11 +87,12 @@ class Analytics {
       
       while (retryCount < maxRetries) {
         try {
-          const { error } = await supabase
-            .from('analytics_events')
-            .insert([analyticsEvent]);
-
-          if (error) throw error;
+          // Store event in Firestore
+          const analyticsCollection = collection(db, 'analytics_events');
+          await addDoc(analyticsCollection, {
+            ...analyticsEvent,
+            created_at: serverTimestamp(),
+          });
 
           // Also send to real-time analytics if needed
           this.sendToRealTimeAnalytics(analyticsEvent);
@@ -105,20 +119,23 @@ class Analytics {
         // e.g., Sentry, LogRocket, etc.
       }
       
+      // Store failed event for retry
+      this.storeFailedEvent(event);
+      
       // Don't throw the error to prevent app crashes
       return null;
     }
   }
 
   private sendToRealTimeAnalytics(event: AnalyticsEvent) {
-    // Send event to real-time channel for live dashboard updates
-    supabase
-      .channel('analytics')
-      .send({
-        type: 'broadcast',
-        event: 'analytics',
-        payload: event,
-      });
+    // For Firebase, you might use Firebase Realtime Database or Cloud Functions
+    // This is a placeholder for real-time analytics implementation
+    console.log('Real-time analytics event:', event);
+    
+    // If you want to implement real-time updates, consider using:
+    // 1. Firebase Realtime Database
+    // 2. Cloud Functions to trigger on Firestore writes
+    // 3. A separate service like Pusher or Socket.io
   }
 
   private storeFailedEvent(event: any) {
@@ -176,118 +193,215 @@ class Analytics {
     eventType?: string;
     userId?: string;
   }) {
-    let query = supabase
-      .from('analytics_events')
-      .select('*');
-
-    if (options.startDate) {
-      query = query.gte('timestamp', options.startDate);
+    try {
+      const analyticsCollection = collection(db, 'analytics_events');
+      
+      // Build query constraints
+      const constraints = [];
+      
+      if (options.startDate) {
+        constraints.push(where('timestamp', '>=', options.startDate));
+      }
+      
+      if (options.endDate) {
+        constraints.push(where('timestamp', '<=', options.endDate));
+      }
+      
+      if (options.eventType) {
+        constraints.push(where('event_type', '==', options.eventType));
+      }
+      
+      if (options.userId) {
+        constraints.push(where('user_id', '==', options.userId));
+      }
+      
+      // Add default sorting
+      constraints.push(orderBy('timestamp', 'desc'));
+      
+      // Create and execute query
+      const analyticsQuery = query(analyticsCollection, ...constraints);
+      const querySnapshot = await getDocs(analyticsQuery);
+      
+      // Process results
+      const results = [];
+      querySnapshot.forEach((doc) => {
+        results.push({
+          id: doc.id,
+          ...doc.data()
+        });
+      });
+      
+      return results;
+    } catch (error) {
+      console.error('Error fetching analytics:', error);
+      throw error;
     }
-    if (options.endDate) {
-      query = query.lte('timestamp', options.endDate);
-    }
-    if (options.eventType) {
-      query = query.eq('event_type', options.eventType);
-    }
-    if (options.userId) {
-      query = query.eq('user_id', options.userId);
-    }
-
-    const { data, error } = await query;
-    if (error) throw error;
-    return data;
   }
 
   async getDonationMetrics(startDate?: string, endDate?: string) {
-    const query = supabase
-      .from('analytics_events')
-      .select('*')
-      .eq('event_type', 'donation');
-
-    if (startDate) query.gte('timestamp', startDate);
-    if (endDate) query.lte('timestamp', endDate);
-
-    const { data, error } = await query;
-    if (error) throw error;
-
-    const metrics = {
-      totalDonations: 0,
-      totalAmount: 0,
-      averageDonation: 0,
-      recurringDonations: 0,
-      oneTimeDonations: 0,
-    };
-
-    data.forEach((event: DonationEvent) => {
-      metrics.totalDonations++;
-      metrics.totalAmount += event.properties.amount;
-      if (event.properties.donation_type === 'monthly') {
-        metrics.recurringDonations++;
-      } else {
-        metrics.oneTimeDonations++;
+    try {
+      const analyticsCollection = collection(db, 'analytics_events');
+      
+      // Build query constraints
+      const constraints = [where('event_type', '==', 'donation')];
+      
+      if (startDate) {
+        constraints.push(where('timestamp', '>=', startDate));
       }
-    });
-
-    metrics.averageDonation = metrics.totalAmount / metrics.totalDonations || 0;
-
-    return metrics;
+      
+      if (endDate) {
+        constraints.push(where('timestamp', '<=', endDate));
+      }
+      
+      // Create and execute query
+      const donationsQuery = query(analyticsCollection, ...constraints);
+      const querySnapshot = await getDocs(donationsQuery);
+      
+      const metrics = {
+        totalDonations: 0,
+        totalAmount: 0,
+        averageDonation: 0,
+        recurringDonations: 0,
+        oneTimeDonations: 0,
+      };
+      
+      // Process results
+      querySnapshot.forEach((doc) => {
+        const event = doc.data() as DonationEvent;
+        metrics.totalDonations++;
+        metrics.totalAmount += event.properties.amount;
+        
+        if (event.properties.donation_type === 'monthly') {
+          metrics.recurringDonations++;
+        } else {
+          metrics.oneTimeDonations++;
+        }
+      });
+      
+      metrics.averageDonation = metrics.totalAmount / metrics.totalDonations || 0;
+      
+      return metrics;
+    } catch (error) {
+      console.error('Error fetching donation metrics:', error);
+      throw error;
+    }
   }
 
   async getUserMetrics(startDate?: string, endDate?: string) {
-    const query = supabase
-      .from('analytics_events')
-      .select('*')
-      .in('event_type', ['page_view', 'user_action']);
-
-    if (startDate) query.gte('timestamp', startDate);
-    if (endDate) query.lte('timestamp', endDate);
-
-    const { data, error } = await query;
-    if (error) throw error;
-
-    const metrics = {
-      totalPageViews: 0,
-      uniqueVisitors: new Set(),
-      mostViewedPages: new Map<string, number>(),
-      userActions: new Map<string, number>(),
-    };
-
-    data.forEach((event: PageView | UserEvent) => {
-      if (event.event_type === 'page_view') {
-        metrics.totalPageViews++;
-        if (event.user_id) metrics.uniqueVisitors.add(event.user_id);
-        
-        const path = (event as PageView).properties.path;
-        metrics.mostViewedPages.set(
-          path,
-          (metrics.mostViewedPages.get(path) || 0) + 1
-        );
-      } else if (event.event_type === 'user_action') {
-        const action = (event as UserEvent).properties.action;
-        metrics.userActions.set(
-          action,
-          (metrics.userActions.get(action) || 0) + 1
-        );
+    try {
+      const analyticsCollection = collection(db, 'analytics_events');
+      
+      // Build query for page views and user actions
+      const constraints = [
+        where('event_type', 'in', ['page_view', 'user_action'])
+      ];
+      
+      if (startDate) {
+        constraints.push(where('timestamp', '>=', startDate));
       }
-    });
-
-    return {
-      ...metrics,
-      uniqueVisitors: metrics.uniqueVisitors.size,
-      mostViewedPages: Object.fromEntries(metrics.mostViewedPages),
-      userActions: Object.fromEntries(metrics.userActions),
-    };
+      
+      if (endDate) {
+        constraints.push(where('timestamp', '<=', endDate));
+      }
+      
+      // Create and execute query
+      const eventsQuery = query(analyticsCollection, ...constraints);
+      const querySnapshot = await getDocs(eventsQuery);
+      
+      const metrics = {
+        totalPageViews: 0,
+        uniqueVisitors: new Set<string>(),
+        uniqueSessionIds: new Set<string>(),
+        popularPages: new Map<string, number>(),
+        userActions: new Map<string, number>(),
+        bounceRate: 0,
+        averageSessionDuration: 0,
+      };
+      
+      // Process results
+      const sessions = new Map<string, { events: any[], duration: number }>();
+      
+      querySnapshot.forEach((doc) => {
+        const event = doc.data() as AnalyticsEvent;
+        
+        // Track session data
+        if (!sessions.has(event.session_id)) {
+          sessions.set(event.session_id, { events: [], duration: 0 });
+        }
+        sessions.get(event.session_id)?.events.push(event);
+        
+        // Track metrics based on event type
+        if (event.event_type === 'page_view') {
+          metrics.totalPageViews++;
+          
+          if (event.user_id) {
+            metrics.uniqueVisitors.add(event.user_id);
+          }
+          
+          metrics.uniqueSessionIds.add(event.session_id);
+          
+          const path = event.properties.path;
+          metrics.popularPages.set(path, (metrics.popularPages.get(path) || 0) + 1);
+        } else if (event.event_type === 'user_action') {
+          const action = event.properties.action;
+          metrics.userActions.set(action, (metrics.userActions.get(action) || 0) + 1);
+        }
+      });
+      
+      // Calculate bounce rate and session duration
+      let totalSessionDuration = 0;
+      let bouncedSessions = 0;
+      
+      sessions.forEach(({ events }) => {
+        if (events.length === 1 && events[0].event_type === 'page_view') {
+          bouncedSessions++;
+        }
+        
+        if (events.length > 1) {
+          const timestamps = events.map(e => new Date(e.timestamp).getTime()).sort();
+          const sessionDuration = (timestamps[timestamps.length - 1] - timestamps[0]) / 1000; // in seconds
+          totalSessionDuration += sessionDuration;
+        }
+      });
+      
+      metrics.bounceRate = sessions.size ? (bouncedSessions / sessions.size) * 100 : 0;
+      metrics.averageSessionDuration = sessions.size - bouncedSessions > 0 
+        ? totalSessionDuration / (sessions.size - bouncedSessions) 
+        : 0;
+      
+      return {
+        ...metrics,
+        uniqueVisitors: metrics.uniqueVisitors.size,
+        uniqueSessionIds: metrics.uniqueSessionIds.size,
+        popularPages: Array.from(metrics.popularPages.entries())
+          .map(([path, count]) => ({ path, count }))
+          .sort((a, b) => b.count - a.count),
+        userActions: Array.from(metrics.userActions.entries())
+          .map(([action, count]) => ({ action, count }))
+          .sort((a, b) => b.count - a.count),
+      };
+    } catch (error) {
+      console.error('Error fetching user metrics:', error);
+      throw error;
+    }
   }
 }
 
 export const analytics = new Analytics();
 
 export const initializeAnalytics = () => {
-  // Initialize analytics service
-  try {
-    // Add initialization logic here
-    console.log('Analytics initialized');
-  } catch (error) {
-    console.error('Failed to initialize analytics:', error);
-  }
+  // Initialize analytics
+  window.addEventListener('load', () => {
+    // Track page view on initial load
+    analytics.trackPageView({
+      title: document.title,
+      referrer: document.referrer,
+      path: window.location.pathname,
+    });
+    
+    // Retry any failed events
+    analytics.retryFailedEvents();
+  });
+  
+  return analytics;
 };

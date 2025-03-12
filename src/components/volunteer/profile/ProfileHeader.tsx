@@ -18,7 +18,7 @@ const ProfileHeader: React.FC<ProfileHeaderProps> = ({ volunteer }) => {
         </h2>
         <div className="flex items-center mt-1">
           <Award className="h-5 w-5 text-rose-600 mr-2" />
-          <span className="text-gray-600">{volunteer.role.name}</span>
+          <span className="text-gray-600">Volunteer</span>
         </div>
       </div>
     </div>

@@ -4,7 +4,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { db, auth } from '../../lib/firebase';
 import { applyActionCode, getAuth } from 'firebase/auth';
 import { doc, updateDoc, collection, addDoc, serverTimestamp } from 'firebase/firestore';
-import { LoadingSpinner } from '../../components/ui/LoadingSpinner';
+import LoadingSpinner from '../../components/ui/LoadingSpinner';
 import { useTheme } from '../../hooks/useTheme';
 
 const VerifyEmail = () => {
@@ -76,7 +76,7 @@ const VerifyEmail = () => {
           <div className="text-center">
             {verifying ? (
               <>
-                <LoadingSpinner size="lg" />
+                <LoadingSpinner size="large" />
                 <h2 className="mt-4 text-lg font-medium">Verifying your email...</h2>
               </>
             ) : error ? (

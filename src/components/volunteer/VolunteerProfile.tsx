@@ -3,7 +3,6 @@ import ProfileHeader from './profile/ProfileHeader';
 import ContactInfo from './profile/ContactInfo';
 import SkillsLanguages from './profile/SkillsLanguages';
 import AvailabilityInfo from './profile/AvailabilityInfo';
-import { canEditSettings } from '../../utils/volunteerUtils';
 
 interface VolunteerProfileProps {
   volunteer: Volunteer;
@@ -23,13 +22,11 @@ const VolunteerProfile: React.FC<VolunteerProfileProps> = ({ volunteer }) => {
         </div>
       </div>
 
-      {canEditSettings(volunteer.role) && (
-        <div className="mt-6 flex justify-end">
-          <button className="text-rose-600 hover:text-rose-700 font-medium">
-            Edit Profile
-          </button>
-        </div>
-      )}
+      <div className="mt-6 flex justify-end">
+        <button className="text-rose-600 hover:text-rose-700 font-medium">
+          Edit Profile
+        </button>
+      </div>
     </div>
   );
 };

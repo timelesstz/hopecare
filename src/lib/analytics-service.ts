@@ -1,28 +1,23 @@
-import { supabase } from './supabase';
+import { db } from '../firebase/config';
+import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
 import type { AnalyticsEvent, DonationAnalytics } from '@/types';
 
-const SUPABASE_ANALYTICS_TABLE = 'analytics_events';
+const ANALYTICS_COLLECTION = 'analytics_events';
 
 export async function trackEvent(event: DonationAnalytics | AnalyticsEvent) {
   try {
-    const { data, error } = await supabase
-      .from(SUPABASE_ANALYTICS_TABLE)
-      .insert([{
-        event_type: event.eventType,
-        timestamp: event.timestamp || new Date().toISOString(),
-        amount: 'amount' in event ? event.amount : undefined,
-        currency: 'currency' in event ? event.currency : undefined,
-        payment_method: 'paymentMethod' in event ? event.paymentMethod : undefined,
-        metadata: event.metadata || {},
-        environment: import.meta.env.MODE
-      }]);
+    const analyticsRef = collection(db, ANALYTICS_COLLECTION);
+    await addDoc(analyticsRef, {
+      event_type: event.eventType,
+      timestamp: event.timestamp || serverTimestamp(),
+      amount: 'amount' in event ? event.amount : undefined,
+      currency: 'currency' in event ? event.currency : undefined,
+      payment_method: 'paymentMethod' in event ? event.paymentMethod : undefined,
+      metadata: event.metadata || {},
+      environment: import.meta.env.MODE
+    });
 
-    if (error) {
-      console.error('Error tracking analytics event:', error);
-      return null;
-    }
-
-    return data;
+    return true;
   } catch (error) {
     console.error('Error tracking analytics event:', error);
     // Don't throw error to prevent disrupting user flow

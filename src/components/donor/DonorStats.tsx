@@ -7,11 +7,22 @@ interface DonorStat {
   icon: React.ElementType;
 }
 
-const DonorStats: React.FC = () => {
+interface DonorStatsProps {
+  donationTotal?: number;
+  donationCount?: number;
+}
+
+const DonorStats: React.FC<DonorStatsProps> = ({ donationTotal = 0, donationCount = 0 }) => {
+  // Calculate impact score based on donation total and count
+  const impactScore = Math.floor(donationTotal * 0.5 + donationCount * 100);
+  
+  // Calculate monthly average (assuming donations over 12 months)
+  const monthlyAverage = donationTotal > 0 ? donationTotal / 12 : 0;
+
   const stats: DonorStat[] = [
-    { label: "Total Donated", value: "$2,450", icon: CreditCard },
-    { label: "Monthly Average", value: "$245", icon: Clock },
-    { label: "Impact Score", value: "850", icon: BarChart2 },
+    { label: "Total Donated", value: `$${donationTotal.toLocaleString()}`, icon: CreditCard },
+    { label: "Monthly Average", value: `$${monthlyAverage.toFixed(2)}`, icon: Clock },
+    { label: "Impact Score", value: impactScore.toString(), icon: BarChart2 },
   ];
 
   return (

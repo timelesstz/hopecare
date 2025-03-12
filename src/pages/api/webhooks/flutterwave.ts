@@ -1,11 +1,7 @@
 import { NextApiRequest, NextApiResponse } from 'next';
 import crypto from 'crypto';
-// Supabase import removed - using Firebase instead;
-
-// Initialize Supabase client
-const supabaseUrl = process.env.VITE_SUPABASE_URL!;
-const supabaseKey = process.env.VITE_SUPABASE_ANON_KEY!;
-const supabase = createClient(supabaseUrl, supabaseKey);
+import { db } from '../../../lib/firebase';
+import { collection, query, where, getDocs, addDoc, serverTimestamp } from 'firebase/firestore';
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   // Only accept POST requests
@@ -74,45 +70,41 @@ async function handleChargeCompleted(data: any) {
 
   try {
     // Check if this transaction has already been processed
-    const { data: existingDonation, error: checkError } = await supabase
-      .from('donations')
-      .select('id')
-      .eq('payment_intent_id', id)
-      .single();
-
-    if (existingDonation) {
+    const donationsCollection = collection(db, 'donations');
+    const donationQuery = query(
+      donationsCollection,
+      where('payment_intent_id', '==', id)
+    );
+    
+    const querySnapshot = await getDocs(donationQuery);
+    
+    if (!querySnapshot.empty) {
       console.log(`Transaction ${id} already processed`);
       return;
     }
 
-    // Store the donation in the database
-    const { data: donation, error } = await supabase
-      .from('donations')
-      .insert({
-        amount,
-        currency,
-        type: payment_type === 'recurring' ? 'monthly' : 'one-time',
-        status: 'completed',
-        payment_intent_id: id,
-        provider: 'flutterwave',
-        metadata: {
-          tx_ref,
-          customer_email: customer.email,
-          customer_name: customer.name,
-          payment_type,
-          created_at,
-        },
-        // If you have user_id in the metadata, you can include it here
-        // user_id: metadata.user_id,
-      })
-      .select()
-      .single();
+    // Store the donation in Firestore
+    await addDoc(donationsCollection, {
+      amount,
+      currency,
+      type: payment_type === 'recurring' ? 'monthly' : 'one-time',
+      status: 'completed',
+      payment_intent_id: id,
+      provider: 'flutterwave',
+      metadata: {
+        tx_ref,
+        customer_email: customer.email,
+        customer_name: customer.name,
+        payment_type,
+        created_at,
+      },
+      // If you have user_id in the metadata, you can include it here
+      // user_id: metadata.user_id,
+      created_at: serverTimestamp(),
+      updated_at: serverTimestamp(),
+    });
 
-    if (error) {
-      throw error;
-    }
-
-    console.log(`Donation recorded successfully: ${donation.id}`);
+    console.log(`Donation recorded successfully for transaction: ${id}`);
   } catch (error) {
     console.error('Error recording donation:', error);
     throw error;
@@ -128,30 +120,28 @@ async function handlePaymentFailed(data: any) {
   // Log failed payment
   console.error('Payment failed:', data.id, data.status);
   
-  // You could store failed payments in a separate table or with a 'failed' status
+  // Store failed payments in Firestore
   try {
-    const { error } = await supabase
-      .from('donations')
-      .insert({
-        amount: data.amount,
-        currency: data.currency,
-        type: data.payment_type === 'recurring' ? 'monthly' : 'one-time',
-        status: 'failed',
-        payment_intent_id: data.id,
-        provider: 'flutterwave',
-        metadata: {
-          tx_ref: data.tx_ref,
-          customer_email: data.customer?.email,
-          customer_name: data.customer?.name,
-          payment_type: data.payment_type,
-          created_at: data.created_at,
-          failure_reason: data.failure_reason || 'Unknown',
-        },
-      });
-
-    if (error) {
-      throw error;
-    }
+    const donationsCollection = collection(db, 'donations');
+    
+    await addDoc(donationsCollection, {
+      amount: data.amount,
+      currency: data.currency,
+      type: data.payment_type === 'recurring' ? 'monthly' : 'one-time',
+      status: 'failed',
+      payment_intent_id: data.id,
+      provider: 'flutterwave',
+      metadata: {
+        tx_ref: data.tx_ref,
+        customer_email: data.customer?.email,
+        customer_name: data.customer?.name,
+        payment_type: data.payment_type,
+        created_at: data.created_at,
+        failure_reason: data.failure_reason || 'Unknown',
+      },
+      created_at: serverTimestamp(),
+      updated_at: serverTimestamp(),
+    });
   } catch (error) {
     console.error('Error recording failed payment:', error);
   }

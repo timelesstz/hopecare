@@ -34,14 +34,29 @@ export interface Volunteer {
   firstName: string;
   lastName: string;
   email: string;
-  phone: string;
-  role: VolunteerRole;
-  joinDate: string;
-  skills: string[];
-  languages: string[];
-  availability: Availability;
-  status: 'active' | 'inactive' | 'pending';
-  impactScore: number;
+  phone?: string;
+  skills?: string[];
+  languages?: string[];
+  experience?: string;
+  availability?: {
+    weekdays?: boolean;
+    weekends?: boolean;
+    evenings?: boolean;
+  };
+  emergencyContact?: {
+    name?: string;
+    phone?: string;
+    relationship?: string;
+  };
+  certifications?: {
+    name: string;
+    issueDate: string;
+    expiryDate?: string;
+  }[];
+  hoursLogged?: number;
+  eventsAttended?: number;
+  createdAt?: string;
+  updatedAt?: string;
 }
 
 export interface Availability {

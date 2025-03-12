@@ -2,6 +2,18 @@
 import { db, auth } from '../lib/firebase';
 import { userService } from './userService';
 import { emailService } from './emailService';
+import { 
+  collection, 
+  addDoc, 
+  updateDoc, 
+  doc, 
+  query, 
+  where, 
+  getDocs, 
+  getDoc, 
+  serverTimestamp,
+  runTransaction
+} from 'firebase/firestore';
 
 interface VolunteerProfile {
   user_id: string;
@@ -60,21 +72,18 @@ export class VolunteerService {
     profileData: Partial<VolunteerProfile>
   ): Promise<void> {
     try {
-      // Create volunteer profile
-      const { error: profileError } = await supabase
-        .from('volunteer_profiles')
-        .insert([
-          {
-            user_id: userId,
-            ...profileData,
-            background_check_status: 'pending',
-            total_hours: 0,
-            created_at: new Date().toISOString(),
-            updated_at: new Date().toISOString(),
-          },
-        ]);
-
-      if (profileError) throw profileError;
+      // Create volunteer profile in Firestore
+      const volunteerProfilesCollection = collection(db, 'volunteer_profiles');
+      
+      await addDoc(volunteerProfilesCollection, {
+        user_id: userId,
+        ...profileData,
+        background_check_status: 'pending',
+        total_hours: 0,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+        timestamp: serverTimestamp(),
+      });
 
       // Update user role
       await userService.updateProfile(userId, { role: 'VOLUNTEER' });
@@ -102,15 +111,25 @@ export class VolunteerService {
     updates: Partial<VolunteerProfile>
   ): Promise<void> {
     try {
-      const { error } = await supabase
-        .from('volunteer_profiles')
-        .update({
-          ...updates,
-          updated_at: new Date().toISOString(),
-        })
-        .eq('user_id', userId);
-
-      if (error) throw error;
+      // Find the volunteer profile by user_id
+      const volunteerProfilesCollection = collection(db, 'volunteer_profiles');
+      const q = query(volunteerProfilesCollection, where('user_id', '==', userId));
+      const querySnapshot = await getDocs(q);
+      
+      if (querySnapshot.empty) {
+        throw new Error(`Volunteer profile not found for user ID: ${userId}`);
+      }
+      
+      // Get the first matching document
+      const volunteerProfileDoc = querySnapshot.docs[0];
+      const volunteerProfileRef = doc(db, 'volunteer_profiles', volunteerProfileDoc.id);
+      
+      // Update the profile
+      await updateDoc(volunteerProfileRef, {
+        ...updates,
+        updated_at: new Date().toISOString(),
+        timestamp: serverTimestamp(),
+      });
 
       await userService.logActivity(userId, {
         action: 'volunteer_profile_updated',
@@ -127,21 +146,16 @@ export class VolunteerService {
     opportunity: Omit<VolunteerOpportunity, 'id' | 'created_at' | 'updated_at'>
   ): Promise<string> {
     try {
-      const { data, error } = await supabase
-        .from('volunteer_opportunities')
-        .insert([
-          {
-            ...opportunity,
-            created_at: new Date().toISOString(),
-            updated_at: new Date().toISOString(),
-          },
-        ])
-        .select()
-        .single();
+      const opportunitiesCollection = collection(db, 'volunteer_opportunities');
+      
+      const docRef = await addDoc(opportunitiesCollection, {
+        ...opportunity,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+        timestamp: serverTimestamp(),
+      });
 
-      if (error) throw error;
-
-      return data.id;
+      return docRef.id;
     } catch (error) {
       console.error('Opportunity creation error:', error);
       throw new Error('Failed to create volunteer opportunity');
@@ -158,23 +172,41 @@ export class VolunteerService {
     }
   ): Promise<any[]> {
     try {
-      let query = supabase
-        .from('volunteer_profiles')
-        .select('*, users!inner(*)')
-        .eq('background_check_status', 'approved');
-
+      const volunteerProfilesCollection = collection(db, 'volunteer_profiles');
+      let q = query(volunteerProfilesCollection, where('background_check_status', '==', 'approved'));
+      
+      // Add skill filtering if provided
+      // Note: This is a simplified approach. For array containment with multiple values,
+      // you might need to use multiple queries or a more complex solution
       if (filters.skills?.length) {
-        query = query.contains('skills', filters.skills);
+        // This will match profiles that contain at least one of the specified skills
+        // For exact matching of all skills, you would need a different approach
+        q = query(q, where('skills', 'array-contains-any', filters.skills));
       }
-
-      // Add more complex filtering logic here
-      // This is a simplified version
-
-      const { data, error } = await query;
-
-      if (error) throw error;
-
-      return data;
+      
+      const querySnapshot = await getDocs(q);
+      
+      const matchedVolunteers: any[] = [];
+      
+      // Process results and fetch related user data
+      for (const volunteerDoc of querySnapshot.docs) {
+        const volunteerData = volunteerDoc.data();
+        
+        // Fetch the user data for this volunteer
+        const usersCollection = collection(db, 'users');
+        const userQuery = query(usersCollection, where('id', '==', volunteerData.user_id));
+        const userSnapshot = await getDocs(userQuery);
+        
+        if (!userSnapshot.empty) {
+          const userData = userSnapshot.docs[0].data();
+          matchedVolunteers.push({
+            ...volunteerData,
+            user: userData
+          });
+        }
+      }
+      
+      return matchedVolunteers;
     } catch (error) {
       console.error('Volunteer matching error:', error);
       throw new Error('Failed to match volunteers');
@@ -191,19 +223,16 @@ export class VolunteerService {
     }
   ): Promise<void> {
     try {
-      const { error } = await supabase
-        .from('volunteer_assignments')
-        .insert([
-          {
-            opportunity_id: opportunityId,
-            volunteer_id: volunteerId,
-            ...shiftDetails,
-            status: 'assigned',
-            created_at: new Date().toISOString(),
-          },
-        ]);
-
-      if (error) throw error;
+      const assignmentsCollection = collection(db, 'volunteer_assignments');
+      
+      await addDoc(assignmentsCollection, {
+        opportunity_id: opportunityId,
+        volunteer_id: volunteerId,
+        ...shiftDetails,
+        status: 'assigned',
+        created_at: new Date().toISOString(),
+        timestamp: serverTimestamp(),
+      });
 
       // Get volunteer details
       const volunteer = await userService.getUserWithProfile(volunteerId);
@@ -232,26 +261,24 @@ export class VolunteerService {
     logData: Omit<VolunteerHourLog, 'id' | 'volunteer_id' | 'status'>
   ): Promise<void> {
     try {
-      const { error } = await supabase
-        .from('volunteer_hours')
-        .insert([
-          {
-            volunteer_id: volunteerId,
-            ...logData,
-            status: 'pending',
-            created_at: new Date().toISOString(),
-          },
-        ]);
-
-      if (error) throw error;
+      const hoursCollection = collection(db, 'volunteer_hours');
+      
+      await addDoc(hoursCollection, {
+        volunteer_id: volunteerId,
+        ...logData,
+        status: 'pending',
+        created_at: new Date().toISOString(),
+        timestamp: serverTimestamp(),
+      });
 
       await userService.logActivity(volunteerId, {
         action: 'hours_logged',
         entity_type: 'volunteer_hours',
-        metadata: logData,
+        entity_id: logData.opportunity_id,
+        metadata: { hours: logData.hours, date: logData.date },
       });
     } catch (error) {
-      console.error('Hour logging error:', error);
+      console.error('Hours logging error:', error);
       throw new Error('Failed to log volunteer hours');
     }
   }
@@ -262,38 +289,73 @@ export class VolunteerService {
     notes?: string
   ): Promise<void> {
     try {
-      const { data: hourLog, error: fetchError } = await supabase
-        .from('volunteer_hours')
-        .select('*')
-        .eq('id', hourLogId)
-        .single();
-
-      if (fetchError) throw fetchError;
-
-      const { error: updateError } = await supabase
-        .from('volunteer_hours')
-        .update({
+      // Get the hour log
+      const hourLogRef = doc(db, 'volunteer_hours', hourLogId);
+      const hourLogSnap = await getDoc(hourLogRef);
+      
+      if (!hourLogSnap.exists()) {
+        throw new Error(`Hour log with ID ${hourLogId} not found`);
+      }
+      
+      const hourLog = hourLogSnap.data() as VolunteerHourLog & { id: string };
+      
+      // Use a transaction to ensure data consistency
+      await runTransaction(db, async (transaction) => {
+        // Update the hour log status
+        transaction.update(hourLogRef, {
           status: 'approved',
-          notes,
+          approved_by: adminId,
+          approved_at: new Date().toISOString(),
+          notes: notes || null,
           updated_at: new Date().toISOString(),
-        })
-        .eq('id', hourLogId);
-
-      if (updateError) throw updateError;
-
-      // Update total hours
-      await supabase.rpc('update_volunteer_total_hours', {
-        volunteer_id: hourLog.volunteer_id,
-        hours_to_add: hourLog.hours,
+        });
+        
+        // Find the volunteer profile to update total hours
+        const volunteerProfilesCollection = collection(db, 'volunteer_profiles');
+        const q = query(volunteerProfilesCollection, where('user_id', '==', hourLog.volunteer_id));
+        const querySnapshot = await getDocs(q);
+        
+        if (!querySnapshot.empty) {
+          const volunteerProfileDoc = querySnapshot.docs[0];
+          const volunteerProfileRef = doc(db, 'volunteer_profiles', volunteerProfileDoc.id);
+          const volunteerProfile = volunteerProfileDoc.data() as VolunteerProfile;
+          
+          // Update the total hours
+          transaction.update(volunteerProfileRef, {
+            total_hours: (volunteerProfile.total_hours || 0) + hourLog.hours,
+            updated_at: new Date().toISOString(),
+          });
+        }
       });
 
-      await userService.logActivity(adminId, {
-        action: 'hours_approved',
-        entity_type: 'volunteer_hours',
-        entity_id: hourLogId,
-      });
+      // Get volunteer details for notification
+      const volunteerProfilesCollection = collection(db, 'volunteer_profiles');
+      const q = query(volunteerProfilesCollection, where('user_id', '==', hourLog.volunteer_id));
+      const querySnapshot = await getDocs(q);
+      
+      if (!querySnapshot.empty) {
+        const volunteer = await userService.getUserWithProfile(hourLog.volunteer_id);
+        
+        // Send approval notification
+        await emailService.sendHoursApprovedEmail(volunteer, {
+          hours: hourLog.hours,
+          date: hourLog.date,
+          opportunityId: hourLog.opportunity_id,
+        });
+        
+        // Log activity
+        await userService.logActivity(adminId, {
+          action: 'hours_approved',
+          entity_type: 'volunteer_hours',
+          entity_id: hourLogId,
+          metadata: {
+            volunteer_id: hourLog.volunteer_id,
+            hours: hourLog.hours,
+          },
+        });
+      }
     } catch (error) {
-      console.error('Hour approval error:', error);
+      console.error('Hours approval error:', error);
       throw new Error('Failed to approve volunteer hours');
     }
   }
@@ -306,28 +368,38 @@ export class VolunteerService {
     }[]
   ): Promise<void> {
     try {
-      const { error } = await supabase
-        .from('background_checks')
-        .insert([
-          {
-            volunteer_id: volunteerId,
-            documents,
-            status: 'pending',
-            submitted_at: new Date().toISOString(),
-          },
-        ]);
-
-      if (error) throw error;
-
-      // Update profile status
-      await this.updateVolunteerProfile(volunteerId, {
-        background_check_status: 'pending',
+      const backgroundChecksCollection = collection(db, 'background_checks');
+      
+      await addDoc(backgroundChecksCollection, {
+        volunteer_id: volunteerId,
+        documents,
+        status: 'submitted',
+        submitted_at: new Date().toISOString(),
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+        timestamp: serverTimestamp(),
       });
+
+      // Update volunteer profile status
+      const volunteerProfilesCollection = collection(db, 'volunteer_profiles');
+      const q = query(volunteerProfilesCollection, where('user_id', '==', volunteerId));
+      const querySnapshot = await getDocs(q);
+      
+      if (!querySnapshot.empty) {
+        const volunteerProfileDoc = querySnapshot.docs[0];
+        const volunteerProfileRef = doc(db, 'volunteer_profiles', volunteerProfileDoc.id);
+        
+        await updateDoc(volunteerProfileRef, {
+          background_check_status: 'pending',
+          updated_at: new Date().toISOString(),
+        });
+      }
 
       // Log activity
       await userService.logActivity(volunteerId, {
         action: 'background_check_submitted',
         entity_type: 'background_check',
+        entity_id: volunteerId,
       });
     } catch (error) {
       console.error('Background check submission error:', error);
@@ -341,36 +413,57 @@ export class VolunteerService {
     notes?: string
   ): Promise<void> {
     try {
-      const { error: updateError } = await supabase
-        .from('background_checks')
-        .update({
+      // Update the background check record
+      const backgroundChecksCollection = collection(db, 'background_checks');
+      const q = query(backgroundChecksCollection, 
+        where('volunteer_id', '==', volunteerId),
+        where('status', '==', 'submitted')
+      );
+      const querySnapshot = await getDocs(q);
+      
+      if (!querySnapshot.empty) {
+        const backgroundCheckDoc = querySnapshot.docs[0];
+        const backgroundCheckRef = doc(db, 'background_checks', backgroundCheckDoc.id);
+        
+        await updateDoc(backgroundCheckRef, {
           status,
           processed_at: new Date().toISOString(),
-          notes,
-        })
-        .eq('volunteer_id', volunteerId)
-        .eq('status', 'pending');
+          notes: notes || null,
+          updated_at: new Date().toISOString(),
+        });
+      }
 
-      if (updateError) throw updateError;
-
-      // Update profile status
-      await this.updateVolunteerProfile(volunteerId, {
-        background_check_status: status,
-      });
-
-      // Get volunteer details
-      const volunteer = await userService.getUserWithProfile(volunteerId);
-
-      // Send status notification
-      await emailService.sendBackgroundCheckStatusEmail(volunteer, {
-        status,
-        notes,
-      });
+      // Update volunteer profile status
+      const volunteerProfilesCollection = collection(db, 'volunteer_profiles');
+      const profileQuery = query(volunteerProfilesCollection, where('user_id', '==', volunteerId));
+      const profileSnapshot = await getDocs(profileQuery);
+      
+      if (!profileSnapshot.empty) {
+        const volunteerProfileDoc = profileSnapshot.docs[0];
+        const volunteerProfileRef = doc(db, 'volunteer_profiles', volunteerProfileDoc.id);
+        
+        await updateDoc(volunteerProfileRef, {
+          background_check_status: status,
+          updated_at: new Date().toISOString(),
+        });
+        
+        // Get volunteer details for notification
+        const volunteer = await userService.getUserWithProfile(volunteerId);
+        
+        // Send status notification
+        if (status === 'approved') {
+          await emailService.sendBackgroundCheckApprovedEmail(volunteer);
+        } else {
+          await emailService.sendBackgroundCheckRejectedEmail(volunteer, { notes });
+        }
+      }
 
       // Log activity
-      await userService.logActivity(volunteerId, {
-        action: 'background_check_processed',
-        metadata: { status, notes },
+      await userService.logActivity('admin', { // Replace with actual admin ID
+        action: `background_check_${status}`,
+        entity_type: 'background_check',
+        entity_id: volunteerId,
+        metadata: { notes },
       });
     } catch (error) {
       console.error('Background check processing error:', error);

@@ -2,6 +2,7 @@ import { Resend } from 'resend';
 import { User } from './userService';
 // Supabase client import removed - using Firebase instead
 import { db, auth } from '../lib/firebase';
+import { collection, addDoc, doc, updateDoc, serverTimestamp } from 'firebase/firestore';
 
 interface EmailLog {
   id: string;
@@ -26,31 +27,30 @@ class EmailService {
 
   private async logEmailAttempt(data: Partial<EmailLog>) {
     try {
-      const { error } = await supabase
-        .from('email_logs')
-        .insert([{
-          ...data,
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString(),
-        }]);
-
-      if (error) throw error;
+      const emailLogsCollection = collection(db, 'email_logs');
+      const timestamp = new Date().toISOString();
+      
+      const docRef = await addDoc(emailLogsCollection, {
+        ...data,
+        created_at: timestamp,
+        updated_at: timestamp,
+      });
+      
+      return { id: docRef.id, ...data };
     } catch (error) {
       console.error('Error logging email attempt:', error);
+      return { id: 'error-logging-email', ...data };
     }
   }
 
   private async updateEmailLog(id: string, data: Partial<EmailLog>) {
     try {
-      const { error } = await supabase
-        .from('email_logs')
-        .update({
-          ...data,
-          updated_at: new Date().toISOString(),
-        })
-        .eq('id', id);
-
-      if (error) throw error;
+      const emailLogRef = doc(db, 'email_logs', id);
+      
+      await updateDoc(emailLogRef, {
+        ...data,
+        updated_at: new Date().toISOString(),
+      });
     } catch (error) {
       console.error('Error updating email log:', error);
     }
@@ -66,8 +66,10 @@ class EmailService {
     },
     retryCount = 0
   ): Promise<boolean> {
+    let logEntry;
+    
     try {
-      const logEntry = await this.logEmailAttempt({
+      logEntry = await this.logEmailAttempt({
         user_id: options.user_id,
         email_type: options.email_type,
         status: 'pending',
@@ -97,10 +99,12 @@ class EmailService {
         return this.sendWithRetry(options, retryCount + 1);
       }
 
-      await this.updateEmailLog(logEntry.id, {
-        status: 'failed',
-        error: error.message,
-      });
+      if (logEntry) {
+        await this.updateEmailLog(logEntry.id, {
+          status: 'failed',
+          error: error.message,
+        });
+      }
 
       return false;
     }

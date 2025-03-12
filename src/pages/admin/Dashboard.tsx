@@ -486,9 +486,9 @@ const AdminDashboard: React.FC = () => {
     }
   };
 
-  const fetchDashboardData = async () => {
-    try {
-      setLoading(true);
+    const fetchDashboardData = async () => {
+      try {
+        setLoading(true);
       setError(null);
       
       console.log('Fetching dashboard data...');
@@ -590,7 +590,7 @@ const AdminDashboard: React.FC = () => {
       if (optionalChecks.find(c => c.name === 'events')?.exists) {
         console.log('Fetching events...');
         try {
-          const eventsRef = collection(db, 'events');
+        const eventsRef = collection(db, 'events');
           const eventsQuery = query(
             eventsRef,
             orderBy('date', 'asc'),
@@ -650,7 +650,7 @@ const AdminDashboard: React.FC = () => {
       const donationsByMonth = generateDonationsByMonth(donationsData);
       
       // Update state with the fetched data
-      setStats({
+        setStats({
         totalUsers: usersData.length,
         totalDonations: totalDonations,
         totalDonors: usersData.filter(u => u.role === 'DONOR').length,
@@ -676,7 +676,7 @@ const AdminDashboard: React.FC = () => {
         donations: donationsData,
         events: eventsData,
         settings: settingsData,
-        totalDonations,
+          totalDonations,
         activeUsers,
         upcomingEvents,
         donationsByMonth,
@@ -814,7 +814,7 @@ const AdminDashboard: React.FC = () => {
         date = new Date(seconds * 1000 + nanoseconds / 1000000);
       } else if (typeof timestamp === 'string') {
         date = new Date(timestamp);
-      } else {
+        } else {
         return 'Invalid Date';
       }
       
@@ -834,7 +834,7 @@ const AdminDashboard: React.FC = () => {
       timestampCache.set(cacheKey, formattedDate);
       
       return formattedDate;
-    } catch (error) {
+      } catch (error) {
       console.error('Error formatting timestamp:', error);
       return 'Error';
     }
@@ -881,10 +881,10 @@ const AdminDashboard: React.FC = () => {
       setError('Failed to create sample event');
       toast.error('Failed to create sample event');
     } finally {
-      setLoading(false);
-    }
-  };
-
+        setLoading(false);
+      }
+    };
+    
   // Function to create a sample donation
   const createSampleDonation = async () => {
     try {
@@ -1027,8 +1027,8 @@ const AdminDashboard: React.FC = () => {
     <div>
       <div className="mb-6 flex justify-between items-center">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Dashboard</h1>
-          <p className="text-gray-600 mt-1">
+        <h1 className="text-2xl font-bold text-gray-900">Dashboard</h1>
+        <p className="text-gray-600 mt-1">
             Welcome back, {user?.name || 'HopeCare Admin'}! Here's what's happening today.
           </p>
         </div>
@@ -1114,45 +1114,45 @@ const AdminDashboard: React.FC = () => {
             </div>
           )}
 
-          {/* Stats Cards */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-            <StatCard
-              title="Total Donations"
+      {/* Stats Cards */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+        <StatCard
+          title="Total Donations"
               value={`$${stats.totalDonations}`}
-              icon={<DollarSign size={20} />}
-              change={stats.donationChange}
-              changeLabel="vs last month"
-              color="green"
-              delay={0}
-            />
-            <StatCard
-              title="Total Donors"
+          icon={<DollarSign size={20} />}
+          change={stats.donationChange}
+          changeLabel="vs last month"
+          color="green"
+          delay={0}
+        />
+        <StatCard
+          title="Total Donors"
               value={stats.totalDonors}
-              icon={<Users size={20} />}
-              change={stats.donorChange}
-              changeLabel="vs last month"
-              color="blue"
-              delay={1}
-            />
-            <StatCard
-              title="Total Volunteers"
+          icon={<Users size={20} />}
+          change={stats.donorChange}
+          changeLabel="vs last month"
+          color="blue"
+          delay={1}
+        />
+        <StatCard
+          title="Total Volunteers"
               value={stats.totalVolunteers}
-              icon={<Heart size={20} />}
-              change={stats.volunteerChange}
-              changeLabel="vs last month"
-              color="rose"
-              delay={2}
-            />
-            <StatCard
-              title="Upcoming Events"
+          icon={<Heart size={20} />}
+          change={stats.volunteerChange}
+          changeLabel="vs last month"
+          color="rose"
+          delay={2}
+        />
+        <StatCard
+          title="Upcoming Events"
               value={stats.totalEvents}
-              icon={<Calendar size={20} />}
-              change={stats.eventChange}
-              changeLabel="vs last month"
-              color="purple"
-              delay={3}
-            />
-          </div>
+          icon={<Calendar size={20} />}
+          change={stats.eventChange}
+          changeLabel="vs last month"
+          color="purple"
+          delay={3}
+        />
+      </div>
 
           {/* Check if we have any data to display */}
           {stats.totalUsers === 0 && stats.totalDonations === 0 && stats.totalEvents === 0 ? (
@@ -1221,68 +1221,68 @@ const AdminDashboard: React.FC = () => {
             </div>
           ) : (
             <>
-              {/* Charts and Activity */}
-              <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
-                {/* Donation Chart */}
-                <div className="lg:col-span-2 bg-white rounded-lg shadow-sm p-6 border border-gray-100">
-                  <h3 className="text-lg font-medium text-gray-900 mb-4">Donation Overview</h3>
-                  <div className="h-80">
+      {/* Charts and Activity */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
+        {/* Donation Chart */}
+        <div className="lg:col-span-2 bg-white rounded-lg shadow-sm p-6 border border-gray-100">
+          <h3 className="text-lg font-medium text-gray-900 mb-4">Donation Overview</h3>
+          <div className="h-80">
                     {stats.donationsByMonth.length > 0 ? (
-                      <ResponsiveContainer width="100%" height="100%">
-                        <BarChart
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart
                           data={stats.donationsByMonth}
                           margin={{ top: 20, right: 30, left: 20, bottom: 5 }}
-                        >
-                          <CartesianGrid strokeDasharray="3 3" />
-                          <XAxis dataKey="name" />
-                          <YAxis />
-                          <Tooltip formatter={(value) => [`$${value}`, 'Amount']} />
+              >
+                <CartesianGrid strokeDasharray="3 3" />
+                <XAxis dataKey="name" />
+                <YAxis />
+                <Tooltip formatter={(value) => [`$${value}`, 'Amount']} />
                           <Bar dataKey="amount" fill="#8884d8" />
-                        </BarChart>
-                      </ResponsiveContainer>
+              </BarChart>
+            </ResponsiveContainer>
                     ) : (
                       <div className="flex items-center justify-center h-full">
                         <p className="text-gray-500">No donation data available</p>
                       </div>
                     )}
-                  </div>
-                </div>
+          </div>
+        </div>
 
                 {/* User Distribution */}
-                <div className="bg-white rounded-lg shadow-sm p-6 border border-gray-100">
+        <div className="bg-white rounded-lg shadow-sm p-6 border border-gray-100">
                   <h3 className="text-lg font-medium text-gray-900 mb-4">User Distribution</h3>
-                  <div className="h-80">
+          <div className="h-80">
                     {stats.usersByRole && stats.usersByRole.length > 0 ? (
-                      <ResponsiveContainer width="100%" height="100%">
-                        <PieChart>
-                          <Pie
+            <ResponsiveContainer width="100%" height="100%">
+              <PieChart>
+                <Pie
                             data={stats.usersByRole}
-                            cx="50%"
-                            cy="50%"
-                            labelLine={false}
-                            label={({ name, percent }) => `${name}: ${(percent * 100).toFixed(0)}%`}
-                            outerRadius={80}
-                            fill="#8884d8"
-                            dataKey="value"
-                          >
+                  cx="50%"
+                  cy="50%"
+                  labelLine={false}
+                  label={({ name, percent }) => `${name}: ${(percent * 100).toFixed(0)}%`}
+                  outerRadius={80}
+                  fill="#8884d8"
+                  dataKey="value"
+                >
                             {stats.usersByRole.map((entry, index) => (
-                              <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                            ))}
-                          </Pie>
+                    <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                  ))}
+                </Pie>
                           <Tooltip formatter={(value) => [value, 'Users']} />
-                        </PieChart>
-                      </ResponsiveContainer>
+              </PieChart>
+            </ResponsiveContainer>
                     ) : (
                       <div className="flex items-center justify-center h-full">
                         <p className="text-gray-500">No user data available</p>
                       </div>
                     )}
-                  </div>
-                </div>
-              </div>
+          </div>
+        </div>
+      </div>
 
-              {/* Recent Activity */}
-              <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      {/* Recent Activity */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                 {/* Recent Donations */}
                 <div className="bg-white rounded-lg shadow-sm border border-gray-100">
                   <div className="px-6 py-4 border-b border-gray-100">
@@ -1323,42 +1323,42 @@ const AdminDashboard: React.FC = () => {
                       No recent donations
                     </div>
                   )}
-                </div>
-                
-                {/* Quick Actions */}
+        </div>
+        
+        {/* Quick Actions */}
                 <div className="bg-white rounded-lg shadow-sm p-6 border border-gray-100 lg:col-span-2">
-                  <h3 className="text-lg font-medium text-gray-900 mb-4">Quick Actions</h3>
+          <h3 className="text-lg font-medium text-gray-900 mb-4">Quick Actions</h3>
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                     <Link
                       to="/admin/events"
                       className="block w-full py-2 px-4 bg-purple-50 text-purple-700 rounded-lg hover:bg-purple-100 transition-colors"
-                    >
-                      <div className="flex items-center">
+            >
+              <div className="flex items-center">
                         <Calendar size={16} className="mr-2" />
                         <span>Manage Events</span>
-                      </div>
+              </div>
                     </Link>
                     <Link
                       to="/admin/users/volunteers"
-                      className="block w-full py-2 px-4 bg-rose-50 text-rose-700 rounded-lg hover:bg-rose-100 transition-colors"
-                    >
-                      <div className="flex items-center">
-                        <Heart size={16} className="mr-2" />
+              className="block w-full py-2 px-4 bg-rose-50 text-rose-700 rounded-lg hover:bg-rose-100 transition-colors"
+            >
+              <div className="flex items-center">
+                <Heart size={16} className="mr-2" />
                         <span>Manage Volunteers</span>
-                      </div>
+              </div>
                     </Link>
                     <Link
                       to="/admin/users/donors"
                       className="block w-full py-2 px-4 bg-green-50 text-green-700 rounded-lg hover:bg-green-100 transition-colors"
-                    >
-                      <div className="flex items-center">
+            >
+              <div className="flex items-center">
                         <DollarSign size={16} className="mr-2" />
                         <span>Manage Donors</span>
-                      </div>
+              </div>
                     </Link>
                     <Link
                       to="/admin/users/admins"
-                      className="block w-full py-2 px-4 bg-blue-50 text-blue-700 rounded-lg hover:bg-blue-100 transition-colors"
+              className="block w-full py-2 px-4 bg-blue-50 text-blue-700 rounded-lg hover:bg-blue-100 transition-colors"
                     >
                       <div className="flex items-center">
                         <Shield size={16} className="mr-2" />
@@ -1377,15 +1377,15 @@ const AdminDashboard: React.FC = () => {
                     <Link
                       to="/admin/content"
                       className="block w-full py-2 px-4 bg-yellow-50 text-yellow-700 rounded-lg hover:bg-yellow-100 transition-colors"
-                    >
-                      <div className="flex items-center">
-                        <FileText size={16} className="mr-2" />
+            >
+              <div className="flex items-center">
+                <FileText size={16} className="mr-2" />
                         <span>Manage Content</span>
-                      </div>
-                    </Link>
-                  </div>
-                </div>
               </div>
+                    </Link>
+          </div>
+        </div>
+      </div>
             </>
           )}
         </>

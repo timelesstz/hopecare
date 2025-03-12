@@ -261,8 +261,8 @@ const ApiConfigManager: React.FC = () => {
           </div>
         </DialogContent>
         <DialogActions>
-          <Button onClick={handleClose}>Cancel</Button>
-          <Button onClick={handleSave} variant="contained" color="primary">
+          <Button onClick={handleClose} variant="outline">Cancel</Button>
+          <Button onClick={handleSave} variant="primary">
             Save
           </Button>
         </DialogActions>

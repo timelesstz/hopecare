@@ -6,6 +6,7 @@ import { Edit2, Trash2, AlertCircle, Search, CheckCircle, XCircle, Shield, Mail,
 import { toast } from 'react-hot-toast';
 import { safeFirestoreOperation } from '../../../utils/firestoreRetry';
 import { logFirestoreError, isPermissionError } from '../../../utils/firestoreErrorHandler';
+import LoadingSpinner from '../../../components/ui/LoadingSpinner';
 
 interface Admin {
   id: string;
@@ -401,9 +402,9 @@ const AdminsPage: React.FC = () => {
             </div>
           </div>
 
-          {loading && !editingAdmin && !addingAdmin ? (
+          {loading && !editingAdmin ? (
             <div className="flex justify-center items-center h-64">
-              <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-rose-500"></div>
+              <LoadingSpinner size="large" color="primary" />
             </div>
           ) : error ? (
             <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-md mb-6">

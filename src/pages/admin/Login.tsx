@@ -2,7 +2,8 @@ import { useState, ChangeEvent, FormEvent, useRef, useEffect } from 'react';
 import { useNavigate, useLocation, Link } from 'react-router-dom';
 import { useFirebaseAuth } from '../../context/FirebaseAuthContext';
 import { useTheme } from '../../context/ThemeContext';
-import { Button, TextField, Paper, Typography, Box, Alert, InputAdornment, IconButton, Container, CircularProgress } from '@mui/material';
+import { Button } from '../../components/ui/Button';
+import { TextField, Paper, Typography, Box, Alert, InputAdornment, IconButton, Container, CircularProgress } from '@mui/material';
 import { Lock, Mail, Eye, EyeOff, Shield, AlertCircle } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import Navbar from '../../components/Navbar';
@@ -313,25 +314,17 @@ const AdminLogin = () => {
               <Button
                 type="submit"
                 fullWidth
-                variant="contained"
+                variant="primary"
                 disabled={loading || isSubmitting}
-                sx={{
-                  py: 1.5,
-                  bgcolor: 'rgb(225, 29, 72)',
-                  '&:hover': {
-                    bgcolor: 'rgb(190, 18, 60)',
-                  },
-                  color: 'white',
-                  fontWeight: 'medium',
-                  textTransform: 'none',
-                  fontSize: '1rem',
-                  borderRadius: '0.5rem',
-                }}
+                className="py-1.5 bg-rose-600 hover:bg-rose-700 text-white font-medium text-base rounded-lg"
               >
-                {(loading || isSubmitting) ? (
-                  <CircularProgress size={24} sx={{ color: 'white' }} />
+                {loading || isSubmitting ? (
+                  <>
+                    <CircularProgress size={24} className="text-white mr-2" />
+                    Signing in...
+                  </>
                 ) : (
-                  'Sign In'
+                  'Sign in'
                 )}
               </Button>
             </form>

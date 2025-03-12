@@ -241,21 +241,21 @@ const BackgroundCheckManager: React.FC = () => {
           )}
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setShowDialog(false)}>
+          <Button onClick={() => setShowDialog(false)} variant="outline">
             Cancel
           </Button>
           <Button
-            startIcon={<RejectIcon />}
-            color="error"
+            icon={<RejectIcon />}
+            className="bg-red-600 hover:bg-red-700 text-white"
             onClick={() => handleProcess('rejected')}
             disabled={loading}
           >
             Reject
           </Button>
           <Button
-            startIcon={<ApproveIcon />}
-            color="success"
-            variant="contained"
+            icon={<ApproveIcon />}
+            variant="primary"
+            className="bg-green-600 hover:bg-green-700"
             onClick={() => handleProcess('approved')}
             disabled={loading}
           >

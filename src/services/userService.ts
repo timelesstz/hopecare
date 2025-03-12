@@ -1,5 +1,28 @@
 // Supabase client import removed - using Firebase instead
 import { db, auth } from '../lib/firebase';
+import { 
+  createUserWithEmailAndPassword, 
+  signInWithEmailAndPassword,
+  signOut,
+  updateProfile,
+  sendEmailVerification,
+  sendPasswordResetEmail,
+  updatePassword,
+  EmailAuthProvider,
+  reauthenticateWithCredential
+} from 'firebase/auth';
+import { 
+  collection, 
+  doc, 
+  setDoc, 
+  addDoc, 
+  getDoc, 
+  getDocs, 
+  updateDoc, 
+  query, 
+  where, 
+  serverTimestamp 
+} from 'firebase/firestore';
 import { generateToken, verifyToken } from '../utils/jwt';
 import { hashPassword, verifyPassword } from '../utils/password';
 import { authenticator } from 'otplib';
@@ -48,61 +71,88 @@ class UserService {
 
     try {
       // Check if user exists
-      const { data: existingUser } = await supabase
-        .from('users')
-        .select('id')
-        .eq('email', email)
-        .single();
-
-      if (existingUser) {
+      const usersCollection = collection(db, 'users');
+      const userQuery = query(usersCollection, where('email', '==', email));
+      const userSnapshot = await getDocs(userQuery);
+      
+      if (!userSnapshot.empty) {
         throw new Error('User already exists');
       }
 
-      // Hash password
-      const password_hash = await hashPassword(password);
-
-      // Create user
-      const { data: user, error } = await supabase
-        .from('users')
-        .insert([
-          {
-            email,
-            password_hash,
-            role,
-            first_name,
-            last_name,
-            status: 'PENDING_VERIFICATION',
-          },
-        ])
-        .select()
-        .single();
-
-      if (error) throw error;
+      // Create user in Firebase Authentication
+      const userCredential = await createUserWithEmailAndPassword(auth, email, password);
+      const firebaseUser = userCredential.user;
+      
+      // Update display name if provided
+      if (first_name || last_name) {
+        const displayName = `${first_name || ''} ${last_name || ''}`.trim();
+        await updateProfile(firebaseUser, { displayName });
+      }
+      
+      // Send email verification
+      await sendEmailVerification(firebaseUser);
+      
+      // Create user in Firestore
+      const userDocRef = doc(db, 'users', firebaseUser.uid);
+      await setDoc(userDocRef, {
+        id: firebaseUser.uid,
+        email,
+        role,
+        first_name: first_name || null,
+        last_name: last_name || null,
+        status: 'PENDING_VERIFICATION',
+        email_verified: false,
+        two_factor_enabled: false,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      });
 
       // Create verification token
-      const { error: tokenError } = await supabase
-        .from('email_verification_tokens')
-        .insert([
-          {
-            user_id: user.id,
-            token: generateToken(),
-            expires_at: new Date(Date.now() + 24 * 60 * 60 * 1000), // 24 hours
-          },
-        ]);
-
-      if (tokenError) throw tokenError;
+      const verificationTokensCollection = collection(db, 'email_verification_tokens');
+      await addDoc(verificationTokensCollection, {
+        user_id: firebaseUser.uid,
+        token: generateToken(),
+        expires_at: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(), // 24 hours
+        created_at: new Date().toISOString(),
+      });
 
       // Create role-specific profile
       if (role === 'DONOR') {
-        await supabase.from('donor_profiles').insert([{ user_id: user.id }]);
+        const donorProfilesCollection = collection(db, 'donor_profiles');
+        await addDoc(donorProfilesCollection, { 
+          user_id: firebaseUser.uid,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        });
       } else if (role === 'VOLUNTEER') {
-        await supabase.from('volunteer_profiles').insert([{ user_id: user.id }]);
+        const volunteerProfilesCollection = collection(db, 'volunteer_profiles');
+        await addDoc(volunteerProfilesCollection, { 
+          user_id: firebaseUser.uid,
+          background_check_status: 'pending',
+          total_hours: 0,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        });
       }
 
       // Create user profile
-      await supabase.from('user_profiles').insert([{ user_id: user.id }]);
+      const userProfilesCollection = collection(db, 'user_profiles');
+      await addDoc(userProfilesCollection, { 
+        user_id: firebaseUser.uid,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      });
 
-      return user;
+      return {
+        id: firebaseUser.uid,
+        email,
+        role,
+        first_name,
+        last_name,
+        status: 'PENDING_VERIFICATION',
+        email_verified: false,
+        two_factor_enabled: false,
+      };
     } catch (error) {
       console.error('Registration error:', error);
       throw error;
@@ -111,55 +161,52 @@ class UserService {
 
   async login(email: string, password: string) {
     try {
-      const { data: user, error } = await supabase
-        .from('users')
-        .select('*')
-        .eq('email', email)
-        .single();
-
-      if (error || !user) {
-        throw new Error('Invalid credentials');
+      // Sign in with Firebase Authentication
+      const userCredential = await signInWithEmailAndPassword(auth, email, password);
+      const firebaseUser = userCredential.user;
+      
+      // Get user data from Firestore
+      const userDocRef = doc(db, 'users', firebaseUser.uid);
+      const userDoc = await getDoc(userDocRef);
+      
+      if (!userDoc.exists()) {
+        throw new Error('User not found');
       }
-
-      const isValidPassword = await verifyPassword(password, user.password_hash);
-      if (!isValidPassword) {
-        throw new Error('Invalid credentials');
-      }
-
-      if (user.status === 'SUSPENDED') {
+      
+      const userData = userDoc.data() as User;
+      
+      if (userData.status === 'SUSPENDED') {
         throw new Error('Account suspended');
       }
 
-      if (user.status === 'INACTIVE') {
+      if (userData.status === 'INACTIVE') {
         throw new Error('Account inactive');
       }
 
-      // Create session
-      const { error: sessionError } = await supabase
-        .from('user_sessions')
-        .insert([
-          {
-            user_id: user.id,
-            token: generateToken(),
-            expires_at: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000), // 7 days
-          },
-        ]);
-
-      if (sessionError) throw sessionError;
+      // Create session record
+      const userSessionsCollection = collection(db, 'user_sessions');
+      await addDoc(userSessionsCollection, {
+        user_id: firebaseUser.uid,
+        token: generateToken(),
+        expires_at: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(), // 7 days
+        created_at: new Date().toISOString(),
+        ip_address: null, // Would be set in an API context
+        user_agent: null, // Would be set in an API context
+      });
 
       // Update last login
-      await supabase
-        .from('users')
-        .update({ last_login: new Date().toISOString() })
-        .eq('id', user.id);
+      await updateDoc(userDocRef, { 
+        last_login: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      });
 
       // Log activity
-      await this.logActivity(user.id, {
+      await this.logActivity(firebaseUser.uid, {
         action: 'user_login',
         metadata: { method: 'email' },
       });
 
-      return user;
+      return userData;
     } catch (error) {
       console.error('Login error:', error);
       throw error;
@@ -168,11 +215,26 @@ class UserService {
 
   async logout(userId: string, sessionToken: string) {
     try {
-      await supabase
-        .from('user_sessions')
-        .delete()
-        .eq('user_id', userId)
-        .eq('token', sessionToken);
+      // Sign out from Firebase Authentication
+      await signOut(auth);
+      
+      // Delete the session
+      const userSessionsCollection = collection(db, 'user_sessions');
+      const sessionQuery = query(
+        userSessionsCollection, 
+        where('user_id', '==', userId),
+        where('token', '==', sessionToken)
+      );
+      const sessionSnapshot = await getDocs(sessionQuery);
+      
+      if (!sessionSnapshot.empty) {
+        const sessionDoc = sessionSnapshot.docs[0];
+        const sessionRef = doc(db, 'user_sessions', sessionDoc.id);
+        await updateDoc(sessionRef, { 
+          revoked: true,
+          revoked_at: new Date().toISOString(),
+        });
+      }
 
       await this.logActivity(userId, { action: 'user_logout' });
     } catch (error) {
@@ -183,34 +245,54 @@ class UserService {
 
   async updateProfile(userId: string, profileData: Partial<User & UserProfile>) {
     try {
-      // Update user table
+      // Update user document
       const userFields = ['first_name', 'last_name', 'phone', 'avatar_url'];
       const userUpdate = Object.keys(profileData)
         .filter(key => userFields.includes(key))
         .reduce((obj, key) => ({ ...obj, [key]: profileData[key] }), {});
 
       if (Object.keys(userUpdate).length > 0) {
-        const { error: userError } = await supabase
-          .from('users')
-          .update(userUpdate)
-          .eq('id', userId);
-
-        if (userError) throw userError;
+        const userDocRef = doc(db, 'users', userId);
+        await updateDoc(userDocRef, {
+          ...userUpdate,
+          updated_at: new Date().toISOString(),
+        });
+        
+        // Update display name in Firebase Auth if name was updated
+        if (profileData.first_name || profileData.last_name) {
+          const currentUser = auth.currentUser;
+          if (currentUser && currentUser.uid === userId) {
+            const userDoc = await getDoc(userDocRef);
+            const userData = userDoc.data();
+            const firstName = profileData.first_name || userData?.first_name || '';
+            const lastName = profileData.last_name || userData?.last_name || '';
+            const displayName = `${firstName} ${lastName}`.trim();
+            
+            await updateProfile(currentUser, { displayName });
+          }
+        }
       }
 
-      // Update profile table
+      // Update profile document
       const profileFields = ['bio', 'location', 'interests', 'skills', 'social_links', 'preferences'];
       const profileUpdate = Object.keys(profileData)
         .filter(key => profileFields.includes(key))
         .reduce((obj, key) => ({ ...obj, [key]: profileData[key] }), {});
 
       if (Object.keys(profileUpdate).length > 0) {
-        const { error: profileError } = await supabase
-          .from('user_profiles')
-          .update(profileUpdate)
-          .eq('user_id', userId);
-
-        if (profileError) throw profileError;
+        const userProfilesCollection = collection(db, 'user_profiles');
+        const profileQuery = query(userProfilesCollection, where('user_id', '==', userId));
+        const profileSnapshot = await getDocs(profileQuery);
+        
+        if (!profileSnapshot.empty) {
+          const profileDoc = profileSnapshot.docs[0];
+          const profileRef = doc(db, 'user_profiles', profileDoc.id);
+          
+          await updateDoc(profileRef, {
+            ...profileUpdate,
+            updated_at: new Date().toISOString(),
+          });
+        }
       }
 
       await this.logActivity(userId, {
@@ -227,33 +309,30 @@ class UserService {
 
   async getUserWithProfile(userId: string) {
     try {
-      const { data: user, error: userError } = await supabase
-        .from('users')
-        .select('*, user_profiles(*)')
-        .eq('id', userId)
-        .single();
+      const userDocRef = doc(db, 'users', userId);
+      const userDoc = await getDoc(userDocRef);
+      
+      if (!userDoc.exists()) {
+        throw new Error('User not found');
+      }
+      
+      const userData = userDoc.data() as User;
 
-      if (userError) throw userError;
-
-      if (user.role === 'DONOR') {
-        const { data: donorProfile } = await supabase
-          .from('donor_profiles')
-          .select('*')
-          .eq('user_id', userId)
-          .single();
-        return { ...user, donor_profile: donorProfile };
+      if (userData.role === 'DONOR') {
+        const donorProfilesCollection = collection(db, 'donor_profiles');
+        const donorProfileDoc = await getDoc(doc(donorProfilesCollection, userId));
+        const donorProfileData = donorProfileDoc.data() as UserProfile;
+        return { ...userData, donor_profile: donorProfileData };
       }
 
-      if (user.role === 'VOLUNTEER') {
-        const { data: volunteerProfile } = await supabase
-          .from('volunteer_profiles')
-          .select('*')
-          .eq('user_id', userId)
-          .single();
-        return { ...user, volunteer_profile: volunteerProfile };
+      if (userData.role === 'VOLUNTEER') {
+        const volunteerProfilesCollection = collection(db, 'volunteer_profiles');
+        const volunteerProfileDoc = await getDoc(doc(volunteerProfilesCollection, userId));
+        const volunteerProfileData = volunteerProfileDoc.data() as UserProfile;
+        return { ...userData, volunteer_profile: volunteerProfileData };
       }
 
-      return user;
+      return userData;
     } catch (error) {
       console.error('Get user error:', error);
       throw error;
@@ -262,25 +341,23 @@ class UserService {
 
   async changePassword(userId: string, oldPassword: string, newPassword: string) {
     try {
-      const { data: user, error } = await supabase
-        .from('users')
-        .select('password_hash')
-        .eq('id', userId)
-        .single();
+      const userDocRef = doc(db, 'users', userId);
+      const userDoc = await getDoc(userDocRef);
+      
+      if (!userDoc.exists()) {
+        throw new Error('User not found');
+      }
+      
+      const userData = userDoc.data() as User;
 
-      if (error || !user) throw new Error('User not found');
-
-      const isValidPassword = await verifyPassword(oldPassword, user.password_hash);
+      const isValidPassword = await verifyPassword(oldPassword, userData.password_hash);
       if (!isValidPassword) {
         throw new Error('Invalid current password');
       }
 
       const password_hash = await hashPassword(newPassword);
 
-      await supabase
-        .from('users')
-        .update({ password_hash })
-        .eq('id', userId);
+      await updateDoc(userDocRef, { password_hash });
 
       await this.logActivity(userId, { action: 'password_change' });
     } catch (error) {
@@ -291,30 +368,24 @@ class UserService {
 
   async requestPasswordReset(email: string) {
     try {
-      const { data: user, error } = await supabase
-        .from('users')
-        .select('id')
-        .eq('email', email)
-        .single();
-
-      if (error || !user) {
+      const userDocRef = doc(db, 'users', email);
+      const userDoc = await getDoc(userDocRef);
+      
+      if (!userDoc.exists()) {
         // Don't reveal if user exists
         return;
       }
 
+      const userData = userDoc.data() as User;
+
       const token = generateToken();
-      await supabase
-        .from('password_reset_tokens')
-        .insert([
-          {
-            user_id: user.id,
-            token,
-            expires_at: new Date(Date.now() + 24 * 60 * 60 * 1000), // 24 hours
-          },
-        ]);
+      await setDoc(userDocRef, {
+        password_reset_token: token,
+        password_reset_token_expires_at: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(), // 24 hours
+      });
 
       // TODO: Send email with reset token
-      await this.logActivity(user.id, { action: 'password_reset_requested' });
+      await this.logActivity(userData.id, { action: 'password_reset_requested' });
     } catch (error) {
       console.error('Password reset request error:', error);
       throw error;
@@ -323,33 +394,34 @@ class UserService {
 
   async verifyEmail(token: string) {
     try {
-      const { data: verification, error } = await supabase
-        .from('email_verification_tokens')
-        .select('*')
-        .eq('token', token)
-        .eq('used', false)
-        .single();
-
-      if (error || !verification) {
+      const verificationTokensCollection = collection(db, 'email_verification_tokens');
+      const verificationQuery = query(verificationTokensCollection, where('token', '==', token));
+      const verificationSnapshot = await getDocs(verificationQuery);
+      
+      if (verificationSnapshot.empty) {
         throw new Error('Invalid verification token');
       }
+      
+      const verificationDoc = verificationSnapshot.docs[0];
+      const verificationData = verificationDoc.data() as { user_id: string; used: boolean; expires_at: string };
 
-      if (new Date(verification.expires_at) < new Date()) {
+      if (new Date(verificationData.expires_at) < new Date()) {
         throw new Error('Verification token expired');
       }
 
-      await supabase.from('users')
-        .update({
-          email_verified: true,
-          status: 'ACTIVE',
-        })
-        .eq('id', verification.user_id);
+      if (verificationData.used) {
+        throw new Error('Verification token already used');
+      }
 
-      await supabase.from('email_verification_tokens')
-        .update({ used: true })
-        .eq('id', verification.id);
+      const userDocRef = doc(db, 'users', verificationData.user_id);
+      await updateDoc(userDocRef, {
+        email_verified: true,
+        status: 'ACTIVE',
+      });
 
-      await this.logActivity(verification.user_id, { action: 'email_verified' });
+      await updateDoc(verificationDoc, { used: true });
+
+      await this.logActivity(verificationData.user_id, { action: 'email_verified' });
     } catch (error) {
       console.error('Email verification error:', error);
       throw error;
@@ -358,13 +430,12 @@ class UserService {
 
   async logActivity(userId: string, log: ActivityLog) {
     try {
-      await supabase.from('activity_logs').insert([
-        {
-          user_id: userId,
-          ...log,
-          created_at: new Date().toISOString(),
-        },
-      ]);
+      const activityLogsCollection = collection(db, 'activity_logs');
+      await addDoc(activityLogsCollection, {
+        user_id: userId,
+        ...log,
+        created_at: serverTimestamp(),
+      });
     } catch (error) {
       console.error('Activity log error:', error);
       // Don't throw error for logging failures
@@ -373,20 +444,21 @@ class UserService {
 
   async getUserPermissions(userId: string) {
     try {
-      const { data: user, error } = await supabase
-        .from('users')
-        .select('role')
-        .eq('id', userId)
-        .single();
+      const userDocRef = doc(db, 'users', userId);
+      const userDoc = await getDoc(userDocRef);
+      
+      if (!userDoc.exists()) {
+        throw new Error('User not found');
+      }
+      
+      const userData = userDoc.data() as User;
 
-      if (error) throw error;
-
-      const { data: permissions } = await supabase
-        .from('role_permissions')
-        .select('permissions(name)')
-        .eq('role', user.role);
-
-      return permissions?.map(p => p.permissions.name) || [];
+      const rolePermissionsCollection = collection(db, 'role_permissions');
+      const permissionsQuery = query(rolePermissionsCollection, where('role', '==', userData.role));
+      const permissionsSnapshot = await getDocs(permissionsQuery);
+      
+      const permissions = permissionsSnapshot.docs.map(doc => doc.data() as { permissions: { name: string } });
+      return permissions.map(p => p.permissions.name);
     } catch (error) {
       console.error('Get permissions error:', error);
       throw error;
@@ -395,12 +467,8 @@ class UserService {
 
   async updateUserStatus(userId: string, status: User['status']) {
     try {
-      const { error } = await supabase
-        .from('users')
-        .update({ status })
-        .eq('id', userId);
-
-      if (error) throw error;
+      const userDocRef = doc(db, 'users', userId);
+      await updateDoc(userDocRef, { status });
 
       await this.logActivity(userId, {
         action: 'status_update',
@@ -414,26 +482,24 @@ class UserService {
 
   async initializeTwoFactor(userId: string) {
     try {
-      const { data: user } = await supabase
-        .from('users')
-        .select('email')
-        .eq('id', userId)
-        .single();
-
-      if (!user) throw new Error('User not found');
+      const userDocRef = doc(db, 'users', userId);
+      const userDoc = await getDoc(userDocRef);
+      
+      if (!userDoc.exists()) {
+        throw new Error('User not found');
+      }
+      
+      const userData = userDoc.data() as User;
 
       const secret = authenticator.generateSecret();
       const otpauth = authenticator.keyuri(
-        user.email,
+        userData.email,
         'HopeCare',
         secret
       );
 
       // Store the secret temporarily until verification
-      await supabase
-        .from('users')
-        .update({ two_factor_secret: secret })
-        .eq('id', userId);
+      await updateDoc(userDocRef, { two_factor_secret: secret });
 
       // Generate QR code
       const qrCode = await QRCode.toDataURL(otpauth);
@@ -447,34 +513,34 @@ class UserService {
 
   async verifyAndEnableTwoFactor(userId: string, token: string) {
     try {
-      const { data: user } = await supabase
-        .from('users')
-        .select('two_factor_secret')
-        .eq('id', userId)
-        .single();
+      const userDocRef = doc(db, 'users', userId);
+      const userDoc = await getDoc(userDocRef);
+      
+      if (!userDoc.exists()) {
+        throw new Error('User not found');
+      }
+      
+      const userData = userDoc.data() as User;
 
-      if (!user?.two_factor_secret) {
+      if (!userData.two_factor_secret) {
         throw new Error('Two-factor authentication not initialized');
       }
 
       const isValid = authenticator.verify({
         token,
-        secret: user.two_factor_secret,
+        secret: userData.two_factor_secret,
       });
 
       if (!isValid) {
         throw new Error('Invalid verification code');
       }
 
-      await supabase
-        .from('users')
-        .update({
-          two_factor_enabled: true,
-        })
-        .eq('id', userId);
+      await updateDoc(userDocRef, {
+        two_factor_enabled: true,
+      });
 
       await this.logActivity(userId, { action: 'two_factor_enabled' });
-      await emailService.sendTwoFactorEnabledEmail(user);
+      await emailService.sendTwoFactorEnabledEmail(userData);
 
       return true;
     } catch (error) {
@@ -485,13 +551,11 @@ class UserService {
 
   async disableTwoFactor(userId: string) {
     try {
-      await supabase
-        .from('users')
-        .update({
-          two_factor_enabled: false,
-          two_factor_secret: null,
-        })
-        .eq('id', userId);
+      const userDocRef = doc(db, 'users', userId);
+      await updateDoc(userDocRef, {
+        two_factor_enabled: false,
+        two_factor_secret: null,
+      });
 
       await this.logActivity(userId, { action: 'two_factor_disabled' });
 
@@ -504,19 +568,22 @@ class UserService {
 
   async verifyTwoFactorToken(userId: string, token: string) {
     try {
-      const { data: user } = await supabase
-        .from('users')
-        .select('two_factor_secret')
-        .eq('id', userId)
-        .single();
+      const userDocRef = doc(db, 'users', userId);
+      const userDoc = await getDoc(userDocRef);
+      
+      if (!userDoc.exists()) {
+        throw new Error('User not found');
+      }
+      
+      const userData = userDoc.data() as User;
 
-      if (!user?.two_factor_secret) {
+      if (!userData.two_factor_secret) {
         throw new Error('Two-factor authentication not enabled');
       }
 
       return authenticator.verify({
         token,
-        secret: user.two_factor_secret,
+        secret: userData.two_factor_secret,
       });
     } catch (error) {
       console.error('2FA token verification error:', error);

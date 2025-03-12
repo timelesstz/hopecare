@@ -1,129 +1,107 @@
-import { describe, it, expect, vi } from 'vitest';
-import { renderHook, act } from '@testing-library/react';
+import React from 'react';
+import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { mockFirestore } from '../../test/mockFirebase';
 import { DonationProvider, useDonation } from '../DonationContext';
-import { mockSupabase } from '../../test/utils';
+import { collection, addDoc } from 'firebase/firestore';
+import { vi } from 'vitest';
 
-vi.mock('../../lib/supabaseClient', () => ({
-  supabase: mockSupabase,
+// Mock Firebase
+vi.mock('../../lib/firebase', () => ({
+  db: mockFirestore,
 }));
 
-describe('DonationContext', () => {
-  const wrapper = ({ children }: { children: React.ReactNode }) => (
-    <DonationProvider>{children}</DonationProvider>
+vi.mock('firebase/firestore', () => ({
+  collection: vi.fn(),
+  addDoc: vi.fn(),
+  getDocs: vi.fn(),
+  query: vi.fn(),
+  orderBy: vi.fn(),
+}));
+
+// Test component that uses the donation context
+const TestComponent = () => {
+  const { donations, addDonation, loading, error } = useDonation();
+  
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    addDonation({
+      name: 'Test Donor',
+      email: 'test@example.com',
+      amount: 100,
+      message: 'Test donation',
+      date: new Date().toISOString(),
+    });
+  };
+  
+  return (
+    <div>
+      <h1>Donation Test</h1>
+      {loading && <p>Loading...</p>}
+      {error && <p>Error: {error}</p>}
+      <p>Total Donations: {donations.length}</p>
+      <form onSubmit={handleSubmit}>
+        <button type="submit">Add Donation</button>
+      </form>
+    </div>
   );
+};
 
-  it('provides initial donation state', () => {
-    const { result } = renderHook(() => useDonation(), { wrapper });
-
-    expect(result.current.donationData).toBeNull();
-    expect(result.current.loading).toBe(false);
-    expect(result.current.error).toBeNull();
+describe('DonationContext', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
   });
-
-  it('sets donation data correctly', () => {
-    const { result } = renderHook(() => useDonation(), { wrapper });
-
-    const testDonation = {
-      amount: 100,
-      currency: 'USD',
-      projectId: '123',
-      donationType: 'one-time' as const,
-    };
-
-    act(() => {
-      result.current.setDonationData(testDonation);
-    });
-
-    expect(result.current.donationData).toEqual(testDonation);
+  
+  test('provides donation context to children', () => {
+    render(
+      <DonationProvider>
+        <TestComponent />
+      </DonationProvider>
+    );
+    
+    expect(screen.getByText('Donation Test')).toBeInTheDocument();
+    expect(screen.getByText('Total Donations: 0')).toBeInTheDocument();
   });
-
-  it('clears donation data', () => {
-    const { result } = renderHook(() => useDonation(), { wrapper });
-
-    act(() => {
-      result.current.setDonationData({
+  
+  test('adds a donation successfully', async () => {
+    // Mock successful Firestore addDoc
+    (collection as any).mockReturnValueOnce('donations-collection');
+    (addDoc as any).mockResolvedValueOnce({ id: 'new-donation-id' });
+    
+    render(
+      <DonationProvider>
+        <TestComponent />
+      </DonationProvider>
+    );
+    
+    fireEvent.click(screen.getByText('Add Donation'));
+    
+    await waitFor(() => {
+      expect(collection).toHaveBeenCalledWith(mockFirestore, 'donations');
+      expect(addDoc).toHaveBeenCalledWith('donations-collection', expect.objectContaining({
+        name: 'Test Donor',
+        email: 'test@example.com',
         amount: 100,
-        currency: 'USD',
-        projectId: '123',
-        donationType: 'one-time' as const,
-      });
+      }));
     });
-
-    act(() => {
-      result.current.clearDonationData();
-    });
-
-    expect(result.current.donationData).toBeNull();
   });
-
-  it('handles donation submission', async () => {
-    const mockDonation = {
-      amount: 100,
-      currency: 'USD',
-      projectId: '123',
-      donationType: 'one-time' as const,
-    };
-
-    mockSupabase.from().insert.mockResolvedValueOnce({
-      data: { id: '456', ...mockDonation },
-      error: null,
+  
+  test('handles donation error', async () => {
+    const mockError = new Error('Failed to add donation');
+    
+    // Mock Firestore error
+    (collection as any).mockReturnValueOnce('donations-collection');
+    (addDoc as any).mockRejectedValueOnce(mockError);
+    
+    render(
+      <DonationProvider>
+        <TestComponent />
+      </DonationProvider>
+    );
+    
+    fireEvent.click(screen.getByText('Add Donation'));
+    
+    await waitFor(() => {
+      expect(screen.getByText('Error: Failed to add donation')).toBeInTheDocument();
     });
-
-    const { result } = renderHook(() => useDonation(), { wrapper });
-
-    await act(async () => {
-      await result.current.submitDonation(mockDonation);
-    });
-
-    expect(mockSupabase.from).toHaveBeenCalledWith('donations');
-    expect(mockSupabase.from().insert).toHaveBeenCalledWith([mockDonation]);
-  });
-
-  it('handles donation submission error', async () => {
-    const mockError = new Error('Submission failed');
-    mockSupabase.from().insert.mockRejectedValueOnce(mockError);
-
-    const { result } = renderHook(() => useDonation(), { wrapper });
-
-    await act(async () => {
-      await result.current.submitDonation({
-        amount: 100,
-        currency: 'USD',
-        projectId: '123',
-        donationType: 'one-time',
-      });
-    });
-
-    expect(result.current.error).toBe(mockError.message);
-  });
-
-  it('validates donation amount', () => {
-    const { result } = renderHook(() => useDonation(), { wrapper });
-
-    act(() => {
-      result.current.setDonationData({
-        amount: -100, // Invalid amount
-        currency: 'USD',
-        projectId: '123',
-        donationType: 'one-time',
-      });
-    });
-
-    expect(result.current.error).toBe('Invalid donation amount');
-  });
-
-  it('validates donation currency', () => {
-    const { result } = renderHook(() => useDonation(), { wrapper });
-
-    act(() => {
-      result.current.setDonationData({
-        amount: 100,
-        currency: 'INVALID',
-        projectId: '123',
-        donationType: 'one-time',
-      });
-    });
-
-    expect(result.current.error).toBe('Invalid currency');
   });
 });

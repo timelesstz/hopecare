@@ -1,9 +1,9 @@
-// This script migrates Supabase schema to Firebase Firestore
+// This script helps migrate database schema from Supabase to Firestore
 // Run with: node scripts/migrate-schema.js
 
 import { config } from 'dotenv';
 import { initializeApp, cert } from 'firebase-admin/app';
-import { getFirestore } from 'firebase-admin/firestore';
+import { getFirestore, FieldValue } from 'firebase-admin/firestore';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';

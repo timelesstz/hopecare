@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
 // Supabase client import removed - using Firebase instead
-import { db, auth } from '../lib/firebase';
+import { db, auth, storage } from '../../lib/firebase';
+import { ref, uploadBytes, getDownloadURL, listAll, deleteObject } from 'firebase/storage';
+import { collection, addDoc, getDocs, query, orderBy, deleteDoc, doc, updateDoc } from 'firebase/firestore';
 import {
   Grid,
   Card,
@@ -67,13 +69,17 @@ const MediaLibrary: React.FC = () => {
 
   const fetchMediaItems = async () => {
     try {
-      const { data, error } = await supabase
-        .from('media')
-        .select('*')
-        .order('created_at', { ascending: false });
-
-      if (error) throw error;
-      setMediaItems(data);
+      // Get media items from Firestore
+      const mediaCollection = collection(db, 'media');
+      const q = query(mediaCollection, orderBy('created_at', 'desc'));
+      const querySnapshot = await getDocs(q);
+      
+      const items: MediaItem[] = [];
+      querySnapshot.forEach((doc) => {
+        items.push({ id: doc.id, ...doc.data() } as MediaItem);
+      });
+      
+      setMediaItems(items);
     } catch (error) {
       console.error('Error fetching media items:', error);
       showNotification('Failed to fetch media items', 'error');
@@ -92,45 +98,31 @@ const MediaLibrary: React.FC = () => {
         const file = files[i];
         const filename = `${Date.now()}-${file.name}`;
 
-        // Upload file to storage
-        const { data: uploadData, error: uploadError } = await supabase.storage
-          .from('media')
-          .upload(filename, file, {
-            cacheControl: '3600',
-            upsert: false,
-          });
+        // Upload file to Firebase Storage
+        const storageRef = ref(storage, `media/${filename}`);
+        await uploadBytes(storageRef, file);
+        
+        // Get download URL
+        const downloadURL = await getDownloadURL(storageRef);
 
-        if (uploadError) throw uploadError;
-
-        // Get public URL
-        const { data: { publicUrl } } = supabase.storage
-          .from('media')
-          .getPublicUrl(filename);
-
-        // Create media record
-        const { data: mediaData, error: mediaError } = await supabase
-          .from('media')
-          .insert([
-            {
-              filename,
-              url: publicUrl,
-              type: file.type,
-              size: file.size,
-              tags: [],
-              metadata: {
-                title: file.name,
-                alt: file.name,
-              },
-              created_at: new Date().toISOString(),
-              updated_at: new Date().toISOString(),
-            },
-          ])
-          .select()
-          .single();
-
-        if (mediaError) throw mediaError;
-
-        setMediaItems([mediaData, ...mediaItems]);
+        // Create media record in Firestore
+        const mediaData = {
+          filename,
+          url: downloadURL,
+          type: file.type,
+          size: file.size,
+          tags: [],
+          metadata: {
+            title: file.name,
+            alt: file.name,
+          },
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        };
+        
+        const docRef = await addDoc(collection(db, 'media'), mediaData);
+        
+        setMediaItems([{ id: docRef.id, ...mediaData }, ...mediaItems]);
         setUploadProgress(((i + 1) / files.length) * 100);
       }
 
@@ -148,20 +140,12 @@ const MediaLibrary: React.FC = () => {
     if (!confirm('Are you sure you want to delete this item?')) return;
 
     try {
-      // Delete from storage
-      const { error: storageError } = await supabase.storage
-        .from('media')
-        .remove([item.filename]);
+      // Delete from Firebase Storage
+      const storageRef = ref(storage, `media/${item.filename}`);
+      await deleteObject(storageRef);
 
-      if (storageError) throw storageError;
-
-      // Delete from database
-      const { error: dbError } = await supabase
-        .from('media')
-        .delete()
-        .eq('id', item.id);
-
-      if (dbError) throw dbError;
+      // Delete from Firestore
+      await deleteDoc(doc(db, 'media', item.id));
 
       setMediaItems(mediaItems.filter((i) => i.id !== item.id));
       showNotification('Item deleted successfully', 'success');
@@ -175,20 +159,17 @@ const MediaLibrary: React.FC = () => {
     if (!selectedItem) return;
 
     try {
-      const { error } = await supabase
-        .from('media')
-        .update({
-          metadata: {
-            ...selectedItem.metadata,
-            alt: editForm.alt,
-            title: editForm.title,
-          },
-          tags: editForm.tags.split(',').map((tag) => tag.trim()),
-          updated_at: new Date().toISOString(),
-        })
-        .eq('id', selectedItem.id);
-
-      if (error) throw error;
+      // Update in Firestore
+      const mediaRef = doc(db, 'media', selectedItem.id);
+      await updateDoc(mediaRef, {
+        metadata: {
+          ...selectedItem.metadata,
+          alt: editForm.alt,
+          title: editForm.title,
+        },
+        tags: editForm.tags.split(',').map((tag) => tag.trim()),
+        updated_at: new Date().toISOString(),
+      });
 
       setMediaItems(
         mediaItems.map((item) =>

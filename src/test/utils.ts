@@ -3,6 +3,7 @@ import { BrowserRouter } from 'react-router-dom';
 import { DonationProvider } from '../context/DonationContext';
 import { ThemeProvider } from '@mui/material/styles';
 import { theme } from '../theme';
+import { mockFirebase } from './mockFirebase';
 
 const AllTheProviders = ({ children }: { children: React.ReactNode }) => {
   return (
@@ -21,3 +22,6 @@ export const customRender = (ui: React.ReactElement, options = {}) =>
 
 // Re-export everything
 export * from '@testing-library/react';
+
+// Export Firebase mocks
+export { mockFirebase };

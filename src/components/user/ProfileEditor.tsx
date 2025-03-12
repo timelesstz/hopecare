@@ -1,5 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { userService } from '../../services/userService';
+import { storage } from '../../lib/firebase';
+import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import {
   Box,
   Card,
@@ -133,19 +135,15 @@ const ProfileEditor: React.FC<ProfileEditorProps> = ({ userId, onUpdate }) => {
     try {
       let avatarUrl = formData.avatar_url;
       if (avatarFile) {
-        // Upload avatar
+        // Upload avatar to Firebase Storage
         const filename = `${userId}-${Date.now()}-${avatarFile.name}`;
-        const { data, error } = await supabase.storage
-          .from('avatars')
-          .upload(filename, avatarFile);
-
-        if (error) throw error;
-
-        const { data: { publicUrl } } = supabase.storage
-          .from('avatars')
-          .getPublicUrl(filename);
-
-        avatarUrl = publicUrl;
+        const storageRef = ref(storage, `avatars/${filename}`);
+        
+        // Upload the file
+        await uploadBytes(storageRef, avatarFile);
+        
+        // Get the download URL
+        avatarUrl = await getDownloadURL(storageRef);
       }
 
       await userService.updateProfile(userId, {

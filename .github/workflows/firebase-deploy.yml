@@ -1,0 +1,10 @@
+name: Deploy Firebase Rules
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - 'firestore.rules'
+      - 'storage.rules'
+      - 'firebase.json'
+      - '.firebaserc'

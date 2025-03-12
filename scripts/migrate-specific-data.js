@@ -5,7 +5,10 @@
 import { config } from 'dotenv';
 import { createClient } from '@supabase/supabase-js';
 import { initializeApp, cert } from 'firebase-admin/app';
-import { getFirestore } from 'firebase-admin/firestore';
+import { getFirestore, FieldValue } from 'firebase-admin/firestore';
+import { fileURLToPath } from 'url';
+import { dirname } from 'path';
+import path from 'path';
 
 // Load environment variables
 config();

@@ -4,6 +4,7 @@ import { storage, db } from '../../lib/firebase';
 import { ref, uploadBytes, getDownloadURL, deleteObject } from 'firebase/storage';
 import { collection, addDoc, getDocs, query, orderBy, deleteDoc, doc } from 'firebase/firestore';
 import { XMarkIcon, ArrowUpTrayIcon, ClipboardIcon } from '@heroicons/react/24/outline';
+import LoadingSpinner from '../../components/ui/LoadingSpinner';
 
 interface MediaFile {
   id: string;
@@ -159,8 +160,7 @@ const MediaLibrary: React.FC = () => {
 
       {uploading && (
         <div className="mt-4 text-center">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-rose-600 mx-auto"></div>
-          <p className="mt-2 text-sm text-gray-600">Uploading files...</p>
+          <LoadingSpinner size="medium" color="primary" message="Uploading files..." />
         </div>
       )}
 

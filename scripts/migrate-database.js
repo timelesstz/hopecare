@@ -5,7 +5,11 @@
 import { config } from 'dotenv';
 import { createClient } from '@supabase/supabase-js';
 import { initializeApp, cert } from 'firebase-admin/app';
-import { getFirestore } from 'firebase-admin/firestore';
+import { getFirestore, FieldValue } from 'firebase-admin/firestore';
+import { fileURLToPath } from 'url';
+import { dirname } from 'path';
+import fs from 'fs';
+import path from 'path';
 
 // Load environment variables
 config();
@@ -112,67 +116,4 @@ async function migrateTable(tableName) {
     }
     
     console.log(`Migration completed for ${tableName}:`);
-    console.log(`- Successfully migrated: ${successCount} records`);
-    console.log(`- Failed to migrate: ${errorCount} records`);
-    
-  } catch (error) {
-    console.error(`Migration failed for ${tableName}:`, error);
-  }
-}
-
-// Process record to handle special data types
-function processRecord(record) {
-  const processed = {};
-  
-  for (const [key, value] of Object.entries(record)) {
-    // Handle null values
-    if (value === null) {
-      processed[key] = null;
-      continue;
-    }
-    
-    // Handle Date objects or ISO date strings
-    if (value instanceof Date) {
-      processed[key] = value.toISOString();
-      continue;
-    }
-    
-    if (typeof value === 'string' && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/.test(value)) {
-      processed[key] = value; // Keep ISO date strings as is
-      continue;
-    }
-    
-    // Handle arrays
-    if (Array.isArray(value)) {
-      processed[key] = value.map(item => {
-        if (typeof item === 'object' && item !== null) {
-          return processRecord(item);
-        }
-        return item;
-      });
-      continue;
-    }
-    
-    // Handle nested objects
-    if (typeof value === 'object') {
-      processed[key] = processRecord(value);
-      continue;
-    }
-    
-    // Default case: copy the value as is
-    processed[key] = value;
-  }
-  
-  return processed;
-}
-
-// Run the migration
-migrateTable(tableName)
-  .then(() => {
-    console.log('Migration script completed.');
-    process.exit(0);
-  })
-  .catch(error => {
-    console.error('Migration script failed:', error);
-    process.exit(1);
-  }); 
+    console.log(`

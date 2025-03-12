@@ -1,11 +1,11 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useEditor, EditorContent } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
 import Image from '@tiptap/extension-image';
 import Link from '@tiptap/extension-link';
 // Supabase client import removed - using Firebase instead
 import { db, auth } from '../lib/firebase';
-import { Button, IconButton, TextField, Select, MenuItem } from '@mui/material';
+import { Button } from '../../components/ui/Button';
 import {
   Save as SaveIcon,
   Undo as UndoIcon,
@@ -224,8 +224,8 @@ const ContentEditor: React.FC<ContentEditorProps> = ({
           className="flex-1"
         />
         <Button
-          variant="contained"
-          startIcon={<SaveIcon />}
+          variant="primary"
+          icon={<SaveIcon />}
           onClick={handleSave}
           disabled={saving}
         >

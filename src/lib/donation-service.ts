@@ -1,6 +1,7 @@
 import { stripePromise } from './stripe';
-import { supabase } from './supabase';
 import { trackEvent } from './analytics-service';
+import { db } from '../firebase/config';
+import { collection, addDoc, doc, getDoc, updateDoc, serverTimestamp, query, where, getDocs } from 'firebase/firestore';
 import type { DonationDetails, PaymentSession, DonationAnalytics } from '@/types';
 
 export interface DonationDetails {
@@ -359,65 +360,85 @@ export class DonationService {
     metadata?: Record<string, any>;
   }) {
     try {
-      const { error } = await supabase
-        .from('donations')
-        .insert([{
-          ...donationData,
-          created_at: new Date().toISOString(),
-        }]);
+      // Store the donation in Firestore
+      const donationRef = collection(db, 'donations');
+      await addDoc(donationRef, {
+        amount: donationData.amount,
+        type: donationData.type,
+        status: donationData.status,
+        payment_intent_id: donationData.paymentIntentId,
+        provider: donationData.provider,
+        metadata: donationData.metadata || {},
+        created_at: serverTimestamp(),
+        updated_at: serverTimestamp()
+      });
 
-      if (error) throw error;
+      // Track the donation event
+      await trackEvent({
+        eventType: 'donation_completed',
+        amount: donationData.amount,
+        currency: donationData.metadata?.currency || 'KES',
+        paymentMethod: donationData.provider,
+        timestamp: new Date().toISOString(),
+        metadata: {
+          payment_intent_id: donationData.paymentIntentId,
+          status: donationData.status,
+          ...donationData.metadata
+        }
+      } as DonationAnalytics);
+
+      return true;
     } catch (error) {
       console.error('Error recording donation:', error);
+      throw error;
     }
   }
 
   static async setupRecurringPayment(details: DonationDetails) {
-    const provider = details.paymentMethod || 'unlimit';
-    
     try {
-      if (provider === 'unlimit') {
-        return await this.createUnlimitPayment({
-          ...details,
-          donationType: 'monthly'
-        });
-      } else {
-        const response = await fetch('/api/setup-subscription', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify(details),
-        });
+      // Create a subscription record in Firestore
+      const subscriptionRef = collection(db, 'subscriptions');
+      await addDoc(subscriptionRef, {
+        amount: details.amount,
+        currency: details.currency,
+        interval: details.recurringInterval || 'monthly',
+        status: 'active',
+        payment_method: details.paymentMethod,
+        metadata: details.metadata || {},
+        project_id: details.projectId,
+        created_at: serverTimestamp(),
+        updated_at: serverTimestamp(),
+        next_billing_date: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000) // 30 days from now
+      });
 
-        if (!response.ok) {
-          throw new Error('Failed to setup subscription');
-        }
-
-        return await response.json();
-      }
+      return true;
     } catch (error) {
-      console.error('Error setting up subscription:', error);
+      console.error('Error setting up recurring payment:', error);
       throw error;
     }
   }
 
   static async getPaymentMethods() {
-    return [
-      {
-        id: 'unlimit',
-        name: 'Pay with M-Pesa',
-        icon: '/icons/mpesa-logo.svg',
-        description: 'Fast and secure mobile payment',
-        isDefault: true
-      },
-      {
-        id: 'unlimit_card',
-        name: 'Credit/Debit Card',
-        icon: '/icons/card-icon.svg',
-        description: 'Pay with Visa, Mastercard, or other cards',
-        provider: 'unlimit'
-      }
-    ];
+    try {
+      const methodsRef = collection(db, 'payment_methods');
+      const methodsSnapshot = await getDocs(query(methodsRef, where('active', '==', true)));
+      
+      const methods = methodsSnapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      }));
+
+      return methods.length > 0 ? methods : [
+        { id: 'unlimit', name: 'M-Pesa', icon: '/icons/mpesa.svg', active: true },
+        { id: 'stripe', name: 'Card Payment', icon: '/icons/card.svg', active: true }
+      ];
+    } catch (error) {
+      console.error('Error fetching payment methods:', error);
+      // Return default methods if there's an error
+      return [
+        { id: 'unlimit', name: 'M-Pesa', icon: '/icons/mpesa.svg', active: true },
+        { id: 'stripe', name: 'Card Payment', icon: '/icons/card.svg', active: true }
+      ];
+    }
   }
 }

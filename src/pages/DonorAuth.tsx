@@ -20,7 +20,7 @@ const DonorAuth = () => {
   useEffect(() => {
     if (isAuthenticated) {
       console.log("User is authenticated, redirecting to dashboard");
-      navigate("/donor/dashboard");
+      navigate("/donor-dashboard");
     }
   }, [isAuthenticated, navigate]);
 

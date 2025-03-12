@@ -55,11 +55,11 @@ const FirestoreExample: React.FC = () => {
     setError(null);
     
     try {
-      const { data, error } = await firestoreUtils.create('users', {
+      const { data, error } = await firestoreUtils.insert('users', {
         name,
         email,
-        role,
-        status: 'ACTIVE'
+        role: 'USER',
+        created_at: new Date().toISOString()
       });
       
       if (error) {

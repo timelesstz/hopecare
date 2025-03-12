@@ -1,5 +1,23 @@
 // Supabase client import removed - using Firebase instead
 import { db, auth } from '../lib/firebase';
+import { 
+  collection, 
+  query, 
+  where, 
+  getDocs, 
+  updateDoc, 
+  doc, 
+  orderBy, 
+  limit as firestoreLimit, 
+  startAfter, 
+  getCountFromServer,
+  Timestamp,
+  or,
+  and,
+  startAt,
+  endAt,
+  getDoc
+} from 'firebase/firestore';
 import { userService } from './userService';
 
 interface UserSearchFilters {
@@ -24,58 +42,113 @@ interface UserSearchResult {
 export class AdminService {
   static async searchUsers(filters: UserSearchFilters): Promise<UserSearchResult> {
     try {
-      let query = supabase
-        .from('users')
-        .select('*, user_profiles(*)', { count: 'exact' });
-
-      // Apply filters
+      const usersCollection = collection(db, 'users');
+      
+      // Build query constraints
+      const constraints = [];
+      
       if (filters.role) {
-        query = query.eq('role', filters.role);
+        constraints.push(where('role', '==', filters.role));
       }
-
+      
       if (filters.status) {
-        query = query.eq('status', filters.status);
+        constraints.push(where('status', '==', filters.status));
       }
-
-      if (filters.query) {
-        query = query.or(`email.ilike.%${filters.query}%,first_name.ilike.%${filters.query}%,last_name.ilike.%${filters.query}%`);
-      }
-
+      
+      // Date filters
       if (filters.fromDate) {
-        query = query.gte('created_at', filters.fromDate);
+        constraints.push(where('created_at', '>=', filters.fromDate));
       }
-
+      
       if (filters.toDate) {
-        query = query.lte('created_at', filters.toDate);
+        constraints.push(where('created_at', '<=', filters.toDate));
       }
-
-      // Apply sorting
-      if (filters.sortBy) {
-        query = query.order(filters.sortBy, {
-          ascending: filters.sortOrder === 'asc'
-        });
-      } else {
-        query = query.order('created_at', { ascending: false });
-      }
-
+      
+      // Sort order
+      const sortField = filters.sortBy || 'created_at';
+      const sortDirection = filters.sortOrder === 'asc' ? 'asc' : 'desc';
+      constraints.push(orderBy(sortField, sortDirection));
+      
+      // Create the query
+      const usersQuery = query(usersCollection, ...constraints);
+      
+      // Get total count
+      const countSnapshot = await getCountFromServer(usersQuery);
+      const total = countSnapshot.data().count;
+      
       // Apply pagination
       const page = filters.page || 1;
-      const limit = filters.limit || 10;
-      const from = (page - 1) * limit;
-      const to = from + limit - 1;
-
-      query = query.range(from, to);
-
+      const pageSize = filters.limit || 10;
+      const paginatedQuery = query(
+        usersCollection, 
+        ...constraints,
+        firestoreLimit(pageSize)
+      );
+      
+      // If not the first page, we need to use startAfter
+      let finalQuery = paginatedQuery;
+      if (page > 1) {
+        // This is a simplified approach - for production, you'd need to store the last document
+        // of each page or use a cursor-based pagination approach
+        const snapshot = await getDocs(query(
+          usersCollection,
+          ...constraints,
+          firestoreLimit((page - 1) * pageSize)
+        ));
+        
+        const lastVisible = snapshot.docs[snapshot.docs.length - 1];
+        if (lastVisible) {
+          finalQuery = query(
+            usersCollection,
+            ...constraints,
+            startAfter(lastVisible),
+            firestoreLimit(pageSize)
+          );
+        }
+      }
+      
       // Execute query
-      const { data, error, count } = await query;
-
-      if (error) throw error;
-
+      const querySnapshot = await getDocs(finalQuery);
+      
+      // Process results
+      const users = [];
+      for (const userDoc of querySnapshot.docs) {
+        const userData = userDoc.data();
+        
+        // Get user profile
+        const userProfilesCollection = collection(db, 'user_profiles');
+        const profileQuery = query(userProfilesCollection, where('user_id', '==', userDoc.id));
+        const profileSnapshot = await getDocs(profileQuery);
+        
+        let profile = null;
+        if (!profileSnapshot.empty) {
+          profile = profileSnapshot.docs[0].data();
+        }
+        
+        users.push({
+          id: userDoc.id,
+          ...userData,
+          user_profiles: profile
+        });
+      }
+      
+      // If text search is needed, we need to filter in memory
+      // Note: For production, consider using Algolia or another search service
+      let filteredUsers = users;
+      if (filters.query) {
+        const query = filters.query.toLowerCase();
+        filteredUsers = users.filter(user => 
+          user.email?.toLowerCase().includes(query) ||
+          user.first_name?.toLowerCase().includes(query) ||
+          user.last_name?.toLowerCase().includes(query)
+        );
+      }
+      
       return {
-        users: data,
-        total: count || 0,
+        users: filteredUsers,
+        total,
         page,
-        totalPages: Math.ceil((count || 0) / limit)
+        totalPages: Math.ceil(total / pageSize)
       };
     } catch (error) {
       console.error('User search error:', error);
@@ -92,18 +165,17 @@ export class AdminService {
     }
   ): Promise<void> {
     try {
-      const { error } = await supabase
-        .from('users')
-        .update({
-          ...updates,
-          updated_at: new Date().toISOString()
-        })
-        .in('id', userIds);
-
-      if (error) throw error;
-
-      // Log activity for each user
+      const updateData = {
+        ...updates,
+        updated_at: new Date().toISOString()
+      };
+      
+      // Update each user document
       for (const userId of userIds) {
+        const userRef = doc(db, 'users', userId);
+        await updateDoc(userRef, updateData);
+        
+        // Log activity for each user
         await userService.logActivity(userId, {
           action: 'bulk_update',
           metadata: updates
@@ -134,29 +206,44 @@ export class AdminService {
     statusDistribution: Record<string, number>;
   }> {
     try {
+      const usersCollection = collection(db, 'users');
+      const usersSnapshot = await getDocs(usersCollection);
+      
       const today = new Date();
       today.setHours(0, 0, 0, 0);
-
-      const { data, error } = await supabase
-        .from('users')
-        .select('role, status, created_at');
-
-      if (error) throw error;
-
+      
       const stats = {
-        total: data.length,
-        activeUsers: data.filter(u => u.status === 'ACTIVE').length,
-        newUsersToday: data.filter(u => new Date(u.created_at) >= today).length,
+        total: usersSnapshot.size,
+        activeUsers: 0,
+        newUsersToday: 0,
         roleDistribution: {},
         statusDistribution: {}
       };
-
-      // Calculate distributions
-      data.forEach(user => {
-        stats.roleDistribution[user.role] = (stats.roleDistribution[user.role] || 0) + 1;
-        stats.statusDistribution[user.status] = (stats.statusDistribution[user.status] || 0) + 1;
+      
+      // Process each user
+      usersSnapshot.forEach(userDoc => {
+        const userData = userDoc.data();
+        
+        // Count active users
+        if (userData.status === 'ACTIVE') {
+          stats.activeUsers++;
+        }
+        
+        // Count new users today
+        if (new Date(userData.created_at) >= today) {
+          stats.newUsersToday++;
+        }
+        
+        // Update distributions
+        if (userData.role) {
+          stats.roleDistribution[userData.role] = (stats.roleDistribution[userData.role] || 0) + 1;
+        }
+        
+        if (userData.status) {
+          stats.statusDistribution[userData.status] = (stats.statusDistribution[userData.status] || 0) + 1;
+        }
       });
-
+      
       return stats;
     } catch (error) {
       console.error('User stats error:', error);
@@ -180,45 +267,96 @@ export class AdminService {
     totalPages: number;
   }> {
     try {
-      let query = supabase
-        .from('activity_logs')
-        .select('*, users!inner(email)', { count: 'exact' });
-
+      const logsCollection = collection(db, 'activity_logs');
+      
+      // Build query constraints
+      const constraints = [];
+      
       if (filters.userId) {
-        query = query.eq('user_id', filters.userId);
+        constraints.push(where('user_id', '==', filters.userId));
       }
-
+      
       if (filters.action) {
-        query = query.eq('action', filters.action);
+        constraints.push(where('action', '==', filters.action));
       }
-
+      
       if (filters.fromDate) {
-        query = query.gte('created_at', filters.fromDate);
+        constraints.push(where('created_at', '>=', filters.fromDate));
       }
-
+      
       if (filters.toDate) {
-        query = query.lte('created_at', filters.toDate);
+        constraints.push(where('created_at', '<=', filters.toDate));
       }
-
+      
+      // Add sort order
+      constraints.push(orderBy('created_at', 'desc'));
+      
+      // Create the query
+      const logsQuery = query(logsCollection, ...constraints);
+      
+      // Get total count
+      const countSnapshot = await getCountFromServer(logsQuery);
+      const total = countSnapshot.data().count;
+      
       // Apply pagination
       const page = filters.page || 1;
-      const limit = filters.limit || 50;
-      const from = (page - 1) * limit;
-      const to = from + limit - 1;
-
-      query = query
-        .order('created_at', { ascending: false })
-        .range(from, to);
-
-      const { data, error, count } = await query;
-
-      if (error) throw error;
-
+      const pageSize = filters.limit || 50;
+      
+      // Create paginated query
+      let paginatedQuery = query(
+        logsCollection,
+        ...constraints,
+        firestoreLimit(pageSize)
+      );
+      
+      // If not the first page, we need to use startAfter
+      if (page > 1) {
+        const snapshot = await getDocs(query(
+          logsCollection,
+          ...constraints,
+          firestoreLimit((page - 1) * pageSize)
+        ));
+        
+        const lastVisible = snapshot.docs[snapshot.docs.length - 1];
+        if (lastVisible) {
+          paginatedQuery = query(
+            logsCollection,
+            ...constraints,
+            startAfter(lastVisible),
+            firestoreLimit(pageSize)
+          );
+        }
+      }
+      
+      // Execute query
+      const querySnapshot = await getDocs(paginatedQuery);
+      
+      // Process results and fetch user emails
+      const logs = [];
+      for (const logDoc of querySnapshot.docs) {
+        const logData = logDoc.data();
+        
+        // Get user email
+        let userEmail = null;
+        if (logData.user_id) {
+          const userDoc = await getDoc(doc(db, 'users', logData.user_id));
+          if (userDoc.exists()) {
+            userEmail = userDoc.data().email;
+          }
+        }
+        
+        logs.push({
+          id: logDoc.id,
+          ...logData,
+          user: { email: userEmail }
+        });
+      }
+      
       return {
-        logs: data,
-        total: count || 0,
+        logs,
+        total,
         page,
-        totalPages: Math.ceil((count || 0) / limit)
+        totalPages: Math.ceil(total / pageSize)
       };
     } catch (error) {
       console.error('Audit log error:', error);
@@ -235,42 +373,79 @@ export class AdminService {
   }> {
     try {
       const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
-
+      const twentyFourHoursAgoStr = twentyFourHoursAgo.toISOString();
+      
       // Get active users in last 24h
-      const { data: activeUsers } = await supabase
-        .from('user_sessions')
-        .select('user_id', { count: 'exact' })
-        .gte('created_at', twentyFourHoursAgo.toISOString());
-
+      const sessionsCollection = collection(db, 'user_sessions');
+      const sessionsQuery = query(
+        sessionsCollection,
+        where('created_at', '>=', twentyFourHoursAgoStr)
+      );
+      const sessionsSnapshot = await getDocs(sessionsQuery);
+      const activeUsers24h = new Set(
+        sessionsSnapshot.docs.map(doc => doc.data().user_id)
+      ).size;
+      
       // Get failed logins in last 24h
-      const { data: failedLogins } = await supabase
-        .from('activity_logs')
-        .select('id', { count: 'exact' })
-        .eq('action', 'login_failed')
-        .gte('created_at', twentyFourHoursAgo.toISOString());
-
-      // Get error rate and response time
-      const { data: errors } = await supabase
-        .from('activity_logs')
-        .select('metadata')
-        .like('action', '%error%')
-        .gte('created_at', twentyFourHoursAgo.toISOString());
-
+      const logsCollection = collection(db, 'activity_logs');
+      const failedLoginsQuery = query(
+        logsCollection,
+        where('action', '==', 'login_failed'),
+        where('created_at', '>=', twentyFourHoursAgoStr)
+      );
+      const failedLoginsSnapshot = await getDocs(failedLoginsQuery);
+      const failedLogins24h = failedLoginsSnapshot.size;
+      
+      // Get errors in last 24h
+      const errorLogsCollection = collection(db, 'error_logs');
+      const errorLogsQuery = query(
+        errorLogsCollection,
+        where('created_at', '>=', twentyFourHoursAgoStr)
+      );
+      const errorLogsSnapshot = await getDocs(errorLogsQuery);
+      
+      // Calculate error rate (errors / total requests)
+      const requestLogsQuery = query(
+        logsCollection,
+        where('created_at', '>=', twentyFourHoursAgoStr)
+      );
+      const requestLogsSnapshot = await getDocs(requestLogsQuery);
+      
+      const errorRate = requestLogsSnapshot.size > 0 
+        ? (errorLogsSnapshot.size / requestLogsSnapshot.size) * 100 
+        : 0;
+      
+      // Calculate average response time
+      let totalResponseTime = 0;
+      let responseTimeCount = 0;
+      
+      errorLogsSnapshot.forEach(doc => {
+        const data = doc.data();
+        if (data.metadata?.response_time) {
+          totalResponseTime += data.metadata.response_time;
+          responseTimeCount++;
+        }
+      });
+      
+      const averageResponseTime = responseTimeCount > 0 
+        ? totalResponseTime / responseTimeCount 
+        : 0;
+      
       // Get storage usage
-      const { data: storageData } = await supabase.storage
-        .from('media')
-        .list();
-
+      // Note: For Firebase Storage, you might need a different approach
+      // This is a placeholder implementation
+      const storageUsage = 0; // In bytes
+      
       return {
-        activeUsers24h: activeUsers?.length || 0,
-        failedLogins24h: failedLogins?.length || 0,
-        averageResponseTime: 0, // Implement actual response time tracking
-        errorRate: (errors?.length || 0) / 100, // Implement actual error rate calculation
-        storageUsage: storageData?.reduce((acc, file) => acc + (file.metadata?.size || 0), 0) || 0
+        activeUsers24h,
+        failedLogins24h,
+        averageResponseTime,
+        errorRate,
+        storageUsage
       };
     } catch (error) {
-      console.error('System health check error:', error);
-      throw new Error('Failed to get system health metrics');
+      console.error('System health error:', error);
+      throw new Error('Failed to get system health');
     }
   }
 } 

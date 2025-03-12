@@ -1,9 +1,10 @@
-import React, { Component, ErrorInfo } from 'react';
-import { Button, Typography, Box, Container } from '@mui/material';
+import React, { Component, ErrorInfo, ReactNode } from 'react';
+import { AlertCircle, RefreshCw, Home } from 'lucide-react';
+import { Link } from 'react-router-dom';
 import { logError } from '../utils/errorLogger';
 
 interface Props {
-  children: React.ReactNode;
+  children: ReactNode;
 }
 
 interface State {
@@ -13,25 +14,35 @@ interface State {
 }
 
 class ErrorBoundary extends Component<Props, State> {
-  public state: State = {
-    hasError: false,
-    error: null,
-    errorInfo: null,
-  };
-
-  public static getDerivedStateFromError(error: Error): State {
-    return {
-      hasError: true,
-      error,
-      errorInfo: null,
+  constructor(props: Props) {
+    super(props);
+    this.state = {
+      hasError: false,
+      error: null,
+      errorInfo: null
     };
   }
 
-  public componentDidCatch(error: Error, errorInfo: ErrorInfo) {
+  static getDerivedStateFromError(error: Error): State {
+    // Update state so the next render will show the fallback UI
+    return {
+      hasError: true,
+      error,
+      errorInfo: null
+    };
+  }
+
+  componentDidCatch(error: Error, errorInfo: ErrorInfo): void {
+    // Log the error to an error reporting service
+    console.error('Error caught by ErrorBoundary:', error, errorInfo);
+    
     this.setState({
       error,
-      errorInfo,
+      errorInfo
     });
+    
+    // You could also log to an error reporting service here
+    // logErrorToService(error, errorInfo);
 
     // Log error to our error reporting service
     logError('UI Error', {
@@ -42,70 +53,57 @@ class ErrorBoundary extends Component<Props, State> {
     });
   }
 
-  private handleReload = () => {
+  handleRefresh = (): void => {
     window.location.reload();
   };
 
-  private handleGoHome = () => {
-    window.location.href = '/';
-  };
-
-  public render() {
+  render(): ReactNode {
     if (this.state.hasError) {
+      // Render fallback UI
       return (
-        <Container maxWidth="md">
-          <Box
-            display="flex"
-            flexDirection="column"
-            alignItems="center"
-            justifyContent="center"
-            minHeight="100vh"
-            textAlign="center"
-            py={4}
-          >
-            <Typography variant="h4" component="h1" gutterBottom>
-              Oops! Something went wrong
-            </Typography>
+        <div className="min-h-screen bg-gray-50 flex flex-col justify-center items-center p-4">
+          <div className="bg-white rounded-lg shadow-lg p-6 max-w-md w-full">
+            <div className="flex items-center justify-center mb-4">
+              <AlertCircle className="text-red-500 h-12 w-12" />
+            </div>
+            <h1 className="text-2xl font-bold text-center text-gray-800 mb-2">Something went wrong</h1>
+            <p className="text-gray-600 text-center mb-6">
+              We're sorry, but an error occurred while rendering this page.
+            </p>
             
-            <Typography variant="body1" color="text.secondary" paragraph>
-              We're sorry for the inconvenience. Our team has been notified and is working to fix the issue.
-            </Typography>
-
-            {process.env.NODE_ENV === 'development' && this.state.error && (
-              <Box my={4} textAlign="left" width="100%">
-                <Typography variant="h6" gutterBottom>
-                  Error Details:
-                </Typography>
-                <pre style={{ 
-                  backgroundColor: '#f5f5f5',
-                  padding: '1rem',
-                  borderRadius: '4px',
-                  overflow: 'auto'
-                }}>
-                  {this.state.error.toString()}
-                  {this.state.errorInfo?.componentStack}
-                </pre>
-              </Box>
+            {this.state.error && (
+              <div className="bg-red-50 border border-red-200 rounded-md p-4 mb-6">
+                <p className="text-red-700 font-medium">Error: {this.state.error.toString()}</p>
+                {this.state.errorInfo && (
+                  <details className="mt-2">
+                    <summary className="text-sm text-red-600 cursor-pointer">View technical details</summary>
+                    <pre className="mt-2 text-xs text-red-800 overflow-auto p-2 bg-red-100 rounded">
+                      {this.state.errorInfo.componentStack}
+                    </pre>
+                  </details>
+                )}
+              </div>
             )}
-
-            <Box display="flex" gap={2} mt={4}>
-              <Button
-                variant="contained"
-                color="primary"
-                onClick={this.handleReload}
+            
+            <div className="flex flex-col sm:flex-row gap-4">
+              <button
+                onClick={this.handleRefresh}
+                className="flex-1 flex items-center justify-center gap-2 bg-blue-600 text-white py-2 px-4 rounded-md hover:bg-blue-700 transition-colors"
               >
-                Reload Page
-              </Button>
-              <Button
-                variant="outlined"
-                color="primary"
-                onClick={this.handleGoHome}
+                <RefreshCw size={16} />
+                <span>Refresh Page</span>
+              </button>
+              
+              <Link
+                to="/"
+                className="flex-1 flex items-center justify-center gap-2 bg-gray-200 text-gray-800 py-2 px-4 rounded-md hover:bg-gray-300 transition-colors"
               >
-                Go to Homepage
-              </Button>
-            </Box>
-          </Box>
-        </Container>
+                <Home size={16} />
+                <span>Go to Home</span>
+              </Link>
+            </div>
+          </div>
+        </div>
       );
     }
 

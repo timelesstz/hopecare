@@ -5,10 +5,19 @@ import { config } from 'dotenv';
 import { createClient } from '@supabase/supabase-js';
 import { initializeApp, cert } from 'firebase-admin/app';
 import { getAuth } from 'firebase-admin/auth';
-import { getFirestore } from 'firebase-admin/firestore';
+import { getFirestore, FieldValue } from 'firebase-admin/firestore';
+import { fileURLToPath } from 'url';
+import { dirname } from 'path';
+import path from 'path';
+import fs from 'fs';
+import loadServiceAccount from './utils/service-account.js';
 
 // Load environment variables
 config();
+
+// Get the directory name
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
 
 // Validate required environment variables
 const requiredEnvVars = [
@@ -32,50 +41,19 @@ if (missingVars.length > 0) {
 const supabaseUrl = process.env.VITE_SUPABASE_URL;
 const supabaseServiceKey = process.env.VITE_SUPABASE_SERVICE_KEY || process.env.VITE_SUPABASE_ANON_KEY;
 
-// Format Firebase private key correctly
-const privateKey = process.env.FIREBASE_PRIVATE_KEY;
-const formattedPrivateKey = privateKey.startsWith('"') 
-  ? JSON.parse(privateKey) 
-  : privateKey.replace(/\\n/g, '\n');
+// Load the Firebase service account
+const serviceAccount = loadServiceAccount();
 
-// Firebase configuration
-const firebaseServiceAccount = {
-  "type": "service_account",
-  "project_id": process.env.FIREBASE_PROJECT_ID,
-  "private_key_id": process.env.FIREBASE_PRIVATE_KEY_ID,
-  "private_key": formattedPrivateKey,
-  "client_email": process.env.FIREBASE_CLIENT_EMAIL,
-  "client_id": process.env.FIREBASE_CLIENT_ID,
-  "auth_uri": "https://accounts.google.com/o/oauth2/auth",
-  "token_uri": "https://oauth2.googleapis.com/token",
-  "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
-  "client_x509_cert_url": process.env.FIREBASE_CLIENT_CERT_URL
-};
+// Initialize Supabase client
+const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-// Initialize Supabase
-let supabase;
-try {
-  supabase = createClient(supabaseUrl, supabaseServiceKey);
-  console.log('Supabase client initialized successfully');
-} catch (error) {
-  console.error('Failed to initialize Supabase client:', error);
-  process.exit(1);
-}
+// Initialize Firebase Admin SDK
+const app = initializeApp({
+  credential: cert(serviceAccount)
+});
 
-// Initialize Firebase
-let auth, db;
-try {
-  initializeApp({
-    credential: cert(firebaseServiceAccount)
-  });
-  
-  auth = getAuth();
-  db = getFirestore();
-  console.log('Firebase Admin SDK initialized successfully');
-} catch (error) {
-  console.error('Failed to initialize Firebase Admin SDK:', error);
-  process.exit(1);
-}
+const auth = getAuth(app);
+const db = getFirestore(app);
 
 async function migrateUsers() {
   try {
@@ -117,8 +95,8 @@ async function migrateUsers() {
             role: user.role,
             status: user.status,
             last_login: user.last_login,
-            created_at: user.created_at || new Date().toISOString(),
-            updated_at: new Date().toISOString()
+            created_at: user.created_at || FieldValue.serverTimestamp(),
+            updated_at: FieldValue.serverTimestamp()
           }, { merge: true });
           
           console.log(`Updated Firestore document for ${user.email}`);
@@ -162,8 +140,8 @@ async function migrateUsers() {
           role: user.role,
           status: user.status,
           last_login: user.last_login,
-          created_at: user.created_at || new Date().toISOString(),
-          updated_at: new Date().toISOString()
+          created_at: user.created_at || FieldValue.serverTimestamp(),
+          updated_at: FieldValue.serverTimestamp()
         });
         
         console.log(`Created Firestore document for ${user.email}`);

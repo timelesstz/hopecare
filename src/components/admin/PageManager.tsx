@@ -174,8 +174,8 @@ const PageManager: React.FC = () => {
       <div className="flex justify-between items-center">
         <h2 className="text-2xl font-bold">Page Manager</h2>
         <Button
-          variant="contained"
-          startIcon={<AddIcon />}
+          variant="primary"
+          icon={<AddIcon />}
           onClick={() => setIsDialogOpen(true)}
         >
           Create New Page
@@ -303,7 +303,7 @@ const PageManager: React.FC = () => {
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setIsDeleteDialogOpen(false)}>Cancel</Button>
-          <Button onClick={handleDeletePage} color="error" variant="contained">
+          <Button onClick={handleDeletePage} variant="primary" className="bg-red-600 hover:bg-red-700">
             Delete
           </Button>
         </DialogActions>

@@ -43,3 +43,20 @@ export interface DonorRegistrationStep {
   description: string;
   component: React.ComponentType<any>;
 }
+
+export interface Donor {
+  id: string;
+  firstName: string;
+  lastName: string;
+  email: string;
+  phone?: string;
+  address?: string;
+  preferredCauses?: string[];
+  donationFrequency?: string;
+  isAnonymous?: boolean;
+  receiveUpdates?: boolean;
+  totalDonated?: number;
+  donationCount?: number;
+  createdAt?: string;
+  updatedAt?: string;
+}
