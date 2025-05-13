@@ -1,4 +1,4 @@
-import { db } from '../lib/firebase';
+import { db } from '../firebase/config';
 import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
 
 export enum LogLevel {
@@ -30,11 +30,15 @@ export const logEntry = async (entry: LogEntry): Promise<void> => {
   try {
     const logData = {
       ...entry,
-      timestamp: serverTimestamp(),
+      timestamp: new Date().toISOString(),
       environment: import.meta.env.VITE_APP_ENVIRONMENT || 'development',
     };
 
-    await addDoc(collection(db, 'logs'), logData);
+    await addDoc(collection(db, 'logs'), {
+      ...logData,
+      level: logData.level || LogLevel.INFO,
+      timestamp: serverTimestamp()
+    });
   } catch (error) {
     console.error('Error logging to Firestore:', error);
     
@@ -81,4 +85,4 @@ export const logPaymentSuccess = async (
   userId?: string
 ): Promise<void> => {
   await logPayment(message, details, LogLevel.INFO, userId);
-}; 
+};

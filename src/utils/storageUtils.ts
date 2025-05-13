@@ -1,13 +1,5 @@
-import { 
-  ref, 
-  uploadBytes, 
-  getDownloadURL, 
-  deleteObject, 
-  listAll,
-  uploadString,
-  UploadMetadata
-} from 'firebase/storage';
-import { storage } from '../lib/firebase';
+import { storage } from '../firebase/config';
+import { ref, uploadBytes, uploadString, getDownloadURL, deleteObject, listAll, UploadMetadata } from 'firebase/storage';
 
 /**
  * Utility functions for Firebase Storage

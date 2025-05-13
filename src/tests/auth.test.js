@@ -1,31 +1,21 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { 
-  signInWithEmailAndPassword, 
-  createUserWithEmailAndPassword,
-  sendPasswordResetEmail,
-  updateProfile,
-  signOut
-} from 'firebase/auth';
-import { auth } from '../lib/firebase';
-import { useFirebaseAuth } from '../context/FirebaseAuthContext';
+import { createClient } from '@supabase/supabase-js';
+import { useAuth } from '../context/SupabaseAuthContext';
 import { renderHook, act } from '@testing-library/react';
 
-// Mock Firebase auth
-vi.mock('firebase/auth', () => ({
-  signInWithEmailAndPassword: vi.fn(),
-  createUserWithEmailAndPassword: vi.fn(),
-  sendPasswordResetEmail: vi.fn(),
-  updateProfile: vi.fn(),
-  signOut: vi.fn(),
-  getAuth: vi.fn(() => ({}))
+// Mock Supabase auth
+vi.mock('@supabase/supabase-js', () => ({
+  createClient: vi.fn(() => ({
+    auth: {
+      signInWithPassword: vi.fn(),
+      signUp: vi.fn(),
+      signOut: vi.fn(),
+      onAuthStateChange: vi.fn()
+    }
+  }))
 }));
 
-vi.mock('../lib/firebase', () => ({
-  auth: {},
-  db: {}
-}));
-
-describe('Firebase Authentication', () => {
+describe('Supabase Authentication', () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
@@ -202,4 +192,4 @@ describe('Firebase Authentication', () => {
       expect(result.current.isAuthenticated).toBe(false);
     });
   });
-}); 
+});

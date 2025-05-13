@@ -1,7 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { Menu, X, ChevronDown, Heart, LogIn, UserCircle, Home, BookOpen, Calendar, MessageSquare, ChevronRight } from 'lucide-react';
-import { useFirebaseAuth } from '../context/FirebaseAuthContext';
+import { useAuth } from '../contexts/AuthContext';
 import { motion, AnimatePresence } from 'framer-motion';
 
 const Navbar = () => {
@@ -10,7 +10,7 @@ const Navbar = () => {
   const [activeSubmenu, setActiveSubmenu] = useState<string | null>(null);
   const location = useLocation();
   const navigate = useNavigate();
-  const { user, logout } = useFirebaseAuth();
+  const { user, logout } = useAuth();
 
   useEffect(() => {
     const handleScroll = () => {
@@ -157,13 +157,13 @@ const Navbar = () => {
                 <div className="relative group">
                   <button className="inline-flex items-center px-3 py-2 text-gray-700 hover:text-rose-600 font-medium rounded-lg transition-colors duration-200">
                     <UserCircle className="h-6 w-6 mr-2" />
-                    {user.role}
+                    {user?.email ? user.email.split('@')[0] : 'Account'}
                     <ChevronDown className="h-4 w-4 ml-1 transform group-hover:rotate-180 transition-transform duration-200" />
                   </button>
                   <div className="absolute right-0 mt-2 w-48 rounded-xl bg-white shadow-lg ring-1 ring-black ring-opacity-5 opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 z-50">
                     <div className="py-2 px-1">
                       <Link
-                        to={`/${user.role.toLowerCase()}-dashboard`}
+                        to="/user-dashboard"
                         className="block px-4 py-3 text-sm text-gray-700 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors duration-200"
                       >
                         Dashboard
@@ -274,7 +274,7 @@ const Navbar = () => {
                         Welcome back!
                       </div>
                       <div className="text-xs text-gray-500">
-                        Logged in as {user.role}
+                        {user?.email && `Logged in as ${user.email}`}
                       </div>
                     </div>
                   </div>
@@ -375,7 +375,7 @@ const Navbar = () => {
                 {user ? (
                   <div className="flex items-center justify-between p-3">
                     <Link
-                      to={`/${user.role.toLowerCase()}-dashboard`}
+                      to="/user-dashboard"
                       className="flex items-center space-x-2 text-gray-700 hover:text-gray-900"
                       onClick={() => setIsOpen(false)}
                     >
@@ -401,7 +401,7 @@ const Navbar = () => {
                       { label: 'Donor Login', path: '/donor-login', icon: Heart },
                       { label: 'Volunteer Login', path: '/volunteer-login', icon: UserCircle },
                       { label: 'Admin Login', path: '/admin/login', icon: LogIn }
-                    ].map((option, index) => (
+                    ].map((option) => (
                       <Link
                         key={option.label}
                         to={option.path}

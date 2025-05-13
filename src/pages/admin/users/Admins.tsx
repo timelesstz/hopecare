@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { collection, getDocs, updateDoc, deleteDoc, doc, query, where, orderBy, serverTimestamp, setDoc, limit } from 'firebase/firestore';
 import { db } from '../../../lib/firebase';
-import { useFirebaseAuth } from '../../../context/FirebaseAuthContext';
+import { useSupabaseAuth } from '../../../context/SupabaseAuthContext';
 import { Edit2, Trash2, AlertCircle, Search, CheckCircle, XCircle, Shield, Mail, Phone, UserPlus } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 import { safeFirestoreOperation } from '../../../utils/firestoreRetry';
@@ -702,4 +702,4 @@ const AdminsPage: React.FC = () => {
   );
 };
 
-export default AdminsPage; 
+export default AdminsPage;

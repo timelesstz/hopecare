@@ -14,11 +14,10 @@ import {
   LogOut, 
   ChevronDown, 
   ChevronRight,
-  Menu,
   X
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { useFirebaseAuth } from '../../context/FirebaseAuthContext';
+import { useAuth } from '../../contexts/AuthContext';
 
 interface SidebarItemProps {
   icon: React.ReactNode;
@@ -78,7 +77,7 @@ const AdminSidebar: React.FC<AdminSidebarProps> = ({
   onClose
 }) => {
   const location = useLocation();
-  const { logout } = useFirebaseAuth();
+  const { logout } = useAuth();
   const [contentSubmenuOpen, setContentSubmenuOpen] = useState(false);
   const [userSubmenuOpen, setUserSubmenuOpen] = useState(false);
 
@@ -264,4 +263,4 @@ const AdminSidebar: React.FC<AdminSidebarProps> = ({
   );
 };
 
-export default AdminSidebar; 
+export default AdminSidebar;

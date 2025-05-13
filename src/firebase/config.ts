@@ -1,98 +1,186 @@
-// Firebase configuration
-import { initializeApp, FirebaseApp } from 'firebase/app';
-import { getAuth, Auth } from 'firebase/auth';
-import { getFirestore, Firestore } from 'firebase/firestore';
-import { getStorage, FirebaseStorage } from 'firebase/storage';
-import { getAnalytics, Analytics, isSupported } from 'firebase/analytics';
+// Firebase to Supabase Migration Compatibility Layer
+// This file provides compatibility between Firebase and Supabase during migration
+import { supabase } from '../lib/supabase';
 
-// Environment variables should be properly set up in .env files
-// NEVER hardcode API keys in the source code
-const firebaseConfig = {
-  apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
-  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
-  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID,
-  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET,
-  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
-  appId: import.meta.env.VITE_FIREBASE_APP_ID,
-  measurementId: import.meta.env.VITE_FIREBASE_MEASUREMENT_ID
-};
-
-// Check if environment variables are properly set
-const missingEnvVars = Object.entries(firebaseConfig)
-  .filter(([_, value]) => !value)
-  .map(([key]) => key);
-
-if (missingEnvVars.length > 0) {
-  console.error(
-    `Missing Firebase configuration: ${missingEnvVars.join(', ')}. ` +
-    `Please check your environment variables.`
-  );
+// Define types to match Firebase interfaces for compatibility
+type FirebaseApp = any;
+type Auth = any;
+type Firestore = any;
+type FirebaseStorage = any;
+interface Analytics {
+  getAnalytics: () => any;
+  logEvent: (analyticsInstance: any, eventName: string, eventParams?: any) => void;
 }
 
-// Initialize Firebase with proper error handling
-let app: FirebaseApp;
+console.log('Using Supabase compatibility layer for Firebase');
+
+// Create dummy implementations that use Supabase where possible
+let app: FirebaseApp = {};
 let auth: Auth;
 let db: Firestore;
 let storage: FirebaseStorage;
-let analytics: Analytics | null = null;
-
-try {
-  // Initialize Firebase app
-  app = initializeApp(firebaseConfig);
-  
-  // Initialize Firebase services
-  auth = getAuth(app);
-  db = getFirestore(app);
-  storage = getStorage(app);
-  
-  // Initialize Analytics conditionally
-  isSupported().then(yes => {
-    if (yes) {
-      analytics = getAnalytics(app);
-    }
-  }).catch(error => {
-    console.warn('Firebase Analytics initialization error:', error);
-  });
-  
-  if (import.meta.env.DEV) {
-    console.log('Firebase initialized successfully in development mode');
+// Create a dummy analytics object with required methods
+const analyticsImplementation = {
+  getAnalytics: () => ({}),
+  logEvent: (_: any, eventName: string, eventParams?: any) => {
+    console.log('Analytics event tracked via Supabase:', eventName, eventParams);
+  },
+  setUserId: (_: any, userId: string) => {
+    console.log('Set user ID:', userId);
+  },
+  setUserProperties: (_: any, properties: any) => {
+    console.log('Set user properties:', properties);
   }
-} catch (error) {
-  console.error('Failed to initialize Firebase:', error);
+};
+
+// Define analytics variable that will be exported
+let analytics: Analytics = analyticsImplementation;
+
+// Create Supabase compatibility layer for Firebase Auth
+auth = {
+  currentUser: null,
+  // Map Firebase auth state changes to Supabase auth state changes
+  onAuthStateChanged: (callback: (user: any) => void) => {
+    // Initial check
+    supabase.auth.getUser().then(({ data }) => {
+      if (data?.user) {
+        const mappedUser = {
+          uid: data.user.id,
+          email: data.user.email,
+          displayName: data.user.user_metadata?.display_name,
+          ...data.user
+        };
+        callback(mappedUser);
+      } else {
+        callback(null);
+      }
+    });
+
+    // Subscribe to auth changes
+    const { data } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (session?.user) {
+        const mappedUser = {
+          uid: session.user.id,
+          email: session.user.email,
+          displayName: session.user.user_metadata?.display_name,
+          ...session.user
+        };
+        callback(mappedUser);
+      } else {
+        callback(null);
+      }
+    });
+
+    // Return unsubscribe function
+    return () => { data.subscription.unsubscribe(); };
+  },
   
-  // Create dummy implementations for Firebase services in case of initialization failure
-  // This allows the app to continue running in a degraded state
-  const dummyApp = {} as unknown;
-  app = dummyApp as FirebaseApp;
+  // Map Firebase sign in to Supabase sign in
+  signInWithEmailAndPassword: async (email: string, password: string) => {
+    const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+    if (error) throw error;
+    return { user: data.user };
+  },
   
-  const dummyAuth = {
-    currentUser: null,
-    onAuthStateChanged: () => () => {},
-    signInWithEmailAndPassword: () => Promise.reject(new Error('Firebase not initialized')),
-    createUserWithEmailAndPassword: () => Promise.reject(new Error('Firebase not initialized')),
-    signOut: () => Promise.reject(new Error('Firebase not initialized'))
-  } as unknown;
-  auth = dummyAuth as Auth;
+  // Map Firebase create user to Supabase sign up
+  createUserWithEmailAndPassword: async (email: string, password: string) => {
+    const { data, error } = await supabase.auth.signUp({ email, password });
+    if (error) throw error;
+    return { user: data.user };
+  },
   
-  const dummyDb = {
-    collection: () => ({
-      doc: () => ({
-        get: () => Promise.reject(new Error('Firebase not initialized')),
-        set: () => Promise.reject(new Error('Firebase not initialized')),
-        update: () => Promise.reject(new Error('Firebase not initialized')),
-        delete: () => Promise.reject(new Error('Firebase not initialized'))
-      })
+  // Map Firebase sign out to Supabase sign out
+  signOut: async () => {
+    const { error } = await supabase.auth.signOut();
+    if (error) throw error;
+    return true;
+  }
+};
+
+// Initialize Firebase Analytics
+export const initializeAnalytics = () => {
+  try {
+    return analytics;
+  } catch (error) {
+    console.error('Error initializing analytics:', error);
+    return null;
+  }
+};
+
+// Create Supabase compatibility layer for Firestore
+db = {
+  collection: (collectionName: string) => ({
+    doc: (docId: string) => ({
+      get: async () => {
+        // Use type assertion to handle dynamic table names
+        const { data, error } = await supabase
+          .from(collectionName as any)
+          .select('*')
+          .eq('id', docId)
+          .single();
+          
+        if (error) throw error;
+        
+        return {
+          exists: !!data,
+          data: () => data,
+          id: docId
+        };
+      },
+      set: async (docData: any) => {
+        // Use type assertion to handle dynamic table names
+        const { error } = await supabase
+          .from(collectionName as any)
+          .upsert({ id: docId, ...docData });
+          
+        if (error) throw error;
+        return true;
+      },
+      update: async (docData: any) => {
+        // Use type assertion to handle dynamic table names
+        const { error } = await supabase
+          .from(collectionName as any)
+          .update(docData)
+          .eq('id', docId);
+          
+        if (error) throw error;
+        return true;
+      },
+      delete: async () => {
+        // Use type assertion to handle dynamic table names
+        const { error } = await supabase
+          .from(collectionName as any)
+          .delete()
+          .eq('id', docId);
+          
+        if (error) throw error;
+        return true;
+      }
     })
-  } as unknown;
-  db = dummyDb as Firestore;
-  
-  const dummyStorage = {
-    ref: () => ({
-      put: () => Promise.reject(new Error('Firebase not initialized')),
-      getDownloadURL: () => Promise.reject(new Error('Firebase not initialized'))
-    })
-  } as unknown;
-  storage = dummyStorage as FirebaseStorage;
-}
+  })
+};
+
+// Create Supabase compatibility layer for Storage
+storage = {
+  ref: (path: string) => ({
+    put: async (file: File) => {
+      const { error } = await supabase.storage
+        .from('default')
+        .upload(path, file);
+        
+      if (error) throw error;
+      return { ref: { fullPath: path } };
+    },
+    getDownloadURL: async () => {
+      const { data } = supabase.storage
+        .from('default')
+        .getPublicUrl(path);
+        
+      return data.publicUrl;
+    }
+  })
+};
+
+// Analytics is already defined above, no need to redefine it here
 
 export { app, auth, db, storage, analytics };

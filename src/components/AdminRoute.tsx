@@ -1,14 +1,21 @@
 import React from 'react';
 import { Navigate, useLocation } from 'react-router-dom';
-import { useAuth } from '../hooks/useAuth';
+import { useAuth } from '../contexts/AuthContext';
 
 interface AdminRouteProps {
   children: React.ReactNode;
 }
 
 const AdminRoute: React.FC<AdminRouteProps> = ({ children }) => {
-  const { user, isAdmin, loading } = useAuth();
+  const { user, loading, getUserData } = useAuth();
   const location = useLocation();
+
+  // Check if user is an admin based on role
+  const isAdmin = () => {
+    if (!user) return false;
+    const userData = getUserData();
+    return userData?.role?.toLowerCase() === 'admin';
+  };
 
   if (loading) {
     return (
@@ -18,7 +25,7 @@ const AdminRoute: React.FC<AdminRouteProps> = ({ children }) => {
     );
   }
 
-  if (!user || !isAdmin) {
+  if (!user || !isAdmin()) {
     // Redirect to admin login with return path
     return <Navigate to="/admin/login" state={{ from: location }} replace />;
   }

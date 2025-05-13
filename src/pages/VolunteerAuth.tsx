@@ -1,18 +1,17 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useFirebaseAuth } from '../context/FirebaseAuthContext';
+import { useAuth } from '../contexts/AuthContext';
 import { Box, Paper, Typography, Alert, Button, Container, Grid, AlertTitle } from '@mui/material';
 import VolunteerLoginForm from '../components/auth/VolunteerLoginForm';
 import VolunteerRegistrationForm from '../components/auth/VolunteerRegistrationForm';
-import Navbar from '../components/Navbar';
-import Footer from '../components/Footer';
 
 const VolunteerAuth = () => {
   const [isLogin, setIsLogin] = useState(true);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const navigate = useNavigate();
-  const { isAuthenticated, login, register, clearError } = useFirebaseAuth();
+  const { user, login, register, error: authError, clearError } = useAuth();
+  const isAuthenticated = !!user;
 
   // Redirect if already authenticated
   useEffect(() => {
@@ -25,10 +24,11 @@ const VolunteerAuth = () => {
     setLoading(true);
     setError("");
     try {
-      await login(data.email, data.password, "VOLUNTEER");
+      await login(data.email, data.password);
       // The login function updates the auth state, which will trigger the useEffect above
       // to redirect to the dashboard if successful
     } catch (err: any) {
+      console.error("Login error:", err);
       setError(err.message || "Invalid credentials");
     } finally {
       setLoading(false);
@@ -44,7 +44,7 @@ const VolunteerAuth = () => {
         lastName: data.lastName,
         email: data.email,
         phone: data.phone,
-        role: 'volunteer',
+        role: 'VOLUNTEER',
         skills: data.skills,
         availability: data.availability,
         interests: data.interests
@@ -53,6 +53,7 @@ const VolunteerAuth = () => {
       await register(data.email, data.password, userData);
       // If successful, the user will be automatically logged in and redirected
     } catch (err: any) {
+      console.error("Registration error:", err);
       setError(err.message || "Registration failed");
     } finally {
       setLoading(false);
@@ -61,8 +62,7 @@ const VolunteerAuth = () => {
 
   return (
     <div className="min-h-screen flex flex-col">
-      <Navbar />
-      <main className="flex-grow pt-16">
+      <main className="flex-grow">
         <Container maxWidth="lg" sx={{ py: 8 }}>
           <Grid container spacing={4}>
             <Grid item xs={12} md={6}>
@@ -76,10 +76,10 @@ const VolunteerAuth = () => {
                     : "Join our volunteer community and make a difference in people's lives."}
                 </Typography>
 
-                {error && (
+                {(error || authError) && (
                   <Alert severity="error" sx={{ mb: 3 }}>
                     <AlertTitle>Error</AlertTitle>
-                    {error}
+                    {error || authError}
                   </Alert>
                 )}
 
@@ -158,7 +158,6 @@ const VolunteerAuth = () => {
           </Grid>
         </Container>
       </main>
-      <Footer />
     </div>
   );
 };

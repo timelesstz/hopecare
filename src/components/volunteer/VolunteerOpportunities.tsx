@@ -1,9 +1,9 @@
 import { useState, useEffect } from 'react';
 import { Calendar, MapPin, Clock, Users, Search, Filter, ChevronDown, CheckCircle2, Mail } from 'lucide-react';
 import { Opportunity } from '../../hooks/useVolunteerData';
-import { useFirebaseAuth } from '../../context/FirebaseAuthContext';
-import { doc, updateDoc, arrayUnion, getDoc, setDoc } from 'firebase/firestore';
-import { db } from '../../lib/firebase';
+import { useAuth } from '../../contexts/AuthContext';
+import { doc, updateDoc, arrayUnion, getDoc, setDoc, collection } from 'firebase/firestore';
+import { db } from '../../firebase/config';
 import { Modal, Box, Typography, Button, TextField, CircularProgress, Snackbar, Alert } from '@mui/material';
 
 interface VolunteerOpportunitiesProps {
@@ -11,7 +11,7 @@ interface VolunteerOpportunitiesProps {
 }
 
 const VolunteerOpportunities: React.FC<VolunteerOpportunitiesProps> = ({ opportunities = [] }) => {
-  const { user } = useFirebaseAuth();
+  const { user } = useAuth();
   const [selectedCategory, setSelectedCategory] = useState('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [filteredOpportunities, setFilteredOpportunities] = useState<Opportunity[]>([]);
@@ -33,10 +33,10 @@ const VolunteerOpportunities: React.FC<VolunteerOpportunitiesProps> = ({ opportu
   // Load applied opportunities from Firestore
   useEffect(() => {
     const loadAppliedOpportunities = async () => {
-      if (!user?.id) return;
+      if (!user?.uid) return;
       
       try {
-        const volunteerRef = doc(db, 'volunteer_profiles', user.id);
+        const volunteerRef = doc(db, 'volunteer_profiles', user.uid);
         const volunteerDoc = await getDoc(volunteerRef);
         
         if (volunteerDoc.exists() && volunteerDoc.data().applied_opportunities) {
@@ -140,7 +140,7 @@ const VolunteerOpportunities: React.FC<VolunteerOpportunitiesProps> = ({ opportu
   };
 
   const handleApply = async (opportunityId: string) => {
-    if (!user?.id) {
+    if (!user?.uid) {
       setSnackbarMessage('Please log in to apply for opportunities');
       setSnackbarSeverity('error');
       setSnackbarOpen(true);
@@ -156,7 +156,7 @@ const VolunteerOpportunities: React.FC<VolunteerOpportunitiesProps> = ({ opportu
     
     try {
       // Update volunteer profile with applied opportunity
-      const volunteerRef = doc(db, 'volunteer_profiles', user.id);
+      const volunteerRef = doc(db, 'volunteer_profiles', user.uid);
       await updateDoc(volunteerRef, {
         applied_opportunities: arrayUnion(opportunityId)
       });
@@ -343,11 +343,11 @@ const VolunteerOpportunities: React.FC<VolunteerOpportunitiesProps> = ({ opportu
                   </div>
                 </div>
 
-                {opportunity.skills_required && opportunity.skills_required.length > 0 && (
+                {opportunity.skillsRequired && opportunity.skillsRequired.length > 0 && (
                   <div className="mt-4">
                     <p className="text-sm font-medium text-gray-700">Required Skills:</p>
                     <div className="mt-2 flex flex-wrap gap-2">
-                      {opportunity.skills_required.map((skill, index) => (
+                      {opportunity.skillsRequired.map((skill: string, index: number) => (
                         <span
                           key={index}
                           className="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-800"
@@ -468,11 +468,11 @@ const VolunteerOpportunities: React.FC<VolunteerOpportunitiesProps> = ({ opportu
                 </Box>
               </Box>
               
-              {selectedOpportunity.skills_required && selectedOpportunity.skills_required.length > 0 && (
+              {selectedOpportunity.skillsRequired && selectedOpportunity.skillsRequired.length > 0 && (
                 <Box sx={{ mt: 3 }}>
                   <Typography variant="subtitle2" gutterBottom>Required Skills:</Typography>
                   <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1 }}>
-                    {selectedOpportunity.skills_required.map((skill, index) => (
+                    {selectedOpportunity.skillsRequired.map((skill: string, index: number) => (
                       <Box 
                         key={index}
                         sx={{ 
@@ -493,13 +493,14 @@ const VolunteerOpportunities: React.FC<VolunteerOpportunitiesProps> = ({ opportu
               
               <Box sx={{ mt: 4, display: 'flex', justifyContent: 'flex-end', gap: 2 }}>
                 <Button 
-                  variant="outline" 
+                  variant="outlined" 
                   onClick={() => setDetailsModalOpen(false)}
                 >
                   Close
                 </Button>
                 <Button 
-                  variant="primary"
+                  variant="contained"
+                  color="primary"
                   disabled={appliedOpportunities.includes(selectedOpportunity.id)}
                   onClick={() => {
                     setDetailsModalOpen(false);

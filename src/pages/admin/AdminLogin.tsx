@@ -1,8 +1,7 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { auth } from '../../lib/firebase';
-import { useFirebaseAuth } from '../../context/FirebaseAuthContext';
-import { signOut } from 'firebase/auth';
+import { useAuth } from '../../contexts/AuthContext';
+import { supabase } from '../../lib/supabase';
 import { LockClosedIcon } from '@heroicons/react/24/outline';
 
 const AdminLogin: React.FC = () => {
@@ -11,15 +10,16 @@ const AdminLogin: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
-  const { login, checkAdminStatus } = useFirebaseAuth();
+  const { login, getUserData, clearError } = useAuth();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
+    clearError();
     setLoading(true);
 
     try {
-      // Sign in with Firebase
+      // Sign in with Supabase
       const success = await login(email, password);
       
       if (!success) {
@@ -27,10 +27,12 @@ const AdminLogin: React.FC = () => {
       }
 
       // Check if the user has admin role
-      const isAdmin = await checkAdminStatus();
+      const userData = getUserData();
+      const isAdmin = userData?.role?.toLowerCase() === 'admin';
       
       if (!isAdmin) {
-        await signOut(auth); // Sign out if not admin
+        // Sign out if not admin
+        await supabase.auth.signOut();
         throw new Error('Unauthorized access. Admin privileges required.');
       }
 

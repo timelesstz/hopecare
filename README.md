@@ -137,10 +137,38 @@ For a detailed database schema, refer to the `DATABASE_SCHEMA.md` file.
 
 HopeCare uses Flutterwave for payment processing. For testing the payment flow, refer to the `PAYMENT_TESTING.md` file.
 
+## Firebase to Supabase Migration
+
+HopeCare is currently being migrated from Firebase to Supabase. This migration includes:
+
+1. Authentication system migration
+2. Database schema and data migration
+3. Storage migration
+4. Analytics and tracking migration
+
+For detailed information about the migration progress and tasks, please refer to the `docs/tasks.md` file.
+
+### Migration Task Tracking
+
+We use an automated task tracking system to monitor the migration progress:
+
+- **Task Definition**: All migration tasks are defined in `docs/tasks.md` with checkboxes, tags, and code references
+- **Automated Validation**: GitHub workflow in `.github/workflows/task-validation.yml` validates task completion
+- **Progress Updates**: Run `node scripts/update-tasks.js` to automatically update task status based on code changes
+
+### Migration Status
+
+Current migration status:
+- **Authentication**: ~80% complete
+- **Database Migration**: ~15% complete
+- **Feature Migration**: ~40% complete
+- **Infrastructure**: ~25% complete
+- **Overall Progress**: ~40% complete
+
 ## Contributing
 
 Contributions are welcome! Please feel free to submit a Pull Request.
 
 ## License
 
-This project is licensed under the MIT License - see the LICENSE file for details. 
+This project is licensed under the MIT License - see the LICENSE file for details.

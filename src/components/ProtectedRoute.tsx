@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { Navigate, useLocation } from 'react-router-dom';
-import { useFirebaseAuth } from '../context/FirebaseAuthContext';
+import { useAuth } from '../contexts/AuthContext';
 import LoadingSpinner from './ui/LoadingSpinner';
 
 interface ProtectedRouteProps {
@@ -16,7 +16,19 @@ const ProtectedRoute: React.FC<ProtectedRouteProps> = ({
   children, 
   requiredRole 
 }) => {
-  const { isAuthenticated, user, loading, checkUserRole } = useFirebaseAuth();
+  const { isAuthenticated, user, loading, getUserData } = useAuth();
+  
+  // Function to check if user has the required role
+  const checkUserRole = (role: string) => {
+    if (!user) return false;
+    
+    // Get user data using the getUserData helper
+    const userData = getUserData();
+    if (!userData) return false;
+    
+    // Check if user has the required role
+    return userData.role?.toUpperCase() === role.toUpperCase();
+  };
   const location = useLocation();
   const [authorized, setAuthorized] = useState<boolean | null>(null);
 
@@ -34,7 +46,7 @@ const ProtectedRoute: React.FC<ProtectedRouteProps> = ({
         return;
       }
 
-      // Use the checkUserRole function from FirebaseAuthContext
+      // Use the checkUserRole function from SupabaseAuthContext
       const hasRequiredRole = checkUserRole(requiredRole);
       setAuthorized(hasRequiredRole);
     }
@@ -72,4 +84,4 @@ const ProtectedRoute: React.FC<ProtectedRouteProps> = ({
   return <>{children}</>;
 };
 
-export default ProtectedRoute; 
+export default ProtectedRoute;

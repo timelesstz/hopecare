@@ -1,19 +1,18 @@
-// Supabase client import removed - using Firebase instead
-import { db, auth } from '../lib/firebase';
-import { userService } from './userService';
-import { emailService } from './emailService';
+import { db } from '../firebase/config';
 import { 
   collection, 
+  doc, 
+  getDoc, 
+  getDocs, 
   addDoc, 
   updateDoc, 
-  doc, 
   query, 
   where, 
-  getDocs, 
-  getDoc, 
   serverTimestamp,
   runTransaction
 } from 'firebase/firestore';
+import { userService } from './userService';
+// Email service temporarily replaced with console.log during migration
 
 interface VolunteerProfile {
   user_id: string;
@@ -91,8 +90,11 @@ export class VolunteerService {
       // Get user details for email
       const user = await userService.getUserWithProfile(userId);
 
-      // Send welcome email
-      await emailService.sendVolunteerWelcomeEmail(user);
+      // Send email notification (temporarily using console.log during migration)
+      console.log('Would send volunteer welcome email to:', user.email, {
+        firstName: user.first_name,
+        lastName: user.last_name
+      });
 
       // Log activity
       await userService.logActivity(userId, {
@@ -159,6 +161,27 @@ export class VolunteerService {
     } catch (error) {
       console.error('Opportunity creation error:', error);
       throw new Error('Failed to create volunteer opportunity');
+    }
+  }
+
+  static async getVolunteerOpportunities(opportunityId: string): Promise<any[]> {
+    try {
+      const opportunitiesCollection = collection(db, 'volunteer_opportunities');
+      const q = query(opportunitiesCollection, where('id', '==', opportunityId));
+      const querySnapshot = await getDocs(q);
+      
+      const opportunities: any[] = [];
+      
+      // Process results
+      for (const opportunityDoc of querySnapshot.docs) {
+        const opportunityData = opportunityDoc.data();
+        opportunities.push(opportunityData);
+      }
+      
+      return opportunities;
+    } catch (error) {
+      console.error('Opportunities retrieval error:', error);
+      throw new Error('Failed to retrieve volunteer opportunities');
     }
   }
 
@@ -237,8 +260,8 @@ export class VolunteerService {
       // Get volunteer details
       const volunteer = await userService.getUserWithProfile(volunteerId);
 
-      // Send assignment notification
-      await emailService.sendVolunteerAssignmentEmail(volunteer, {
+      // Send assignment notification (temporarily using console.log during migration)
+      console.log('Would send volunteer assignment email to:', volunteer.email, {
         opportunityId,
         shiftDetails,
       });
@@ -300,7 +323,7 @@ export class VolunteerService {
       const hourLog = hourLogSnap.data() as VolunteerHourLog & { id: string };
       
       // Use a transaction to ensure data consistency
-      await runTransaction(db, async (transaction) => {
+      await runTransaction(db, async (transaction: any) => {
         // Update the hour log status
         transaction.update(hourLogRef, {
           status: 'approved',
@@ -336,8 +359,8 @@ export class VolunteerService {
       if (!querySnapshot.empty) {
         const volunteer = await userService.getUserWithProfile(hourLog.volunteer_id);
         
-        // Send approval notification
-        await emailService.sendHoursApprovedEmail(volunteer, {
+        // Send approval notification (temporarily using console.log during migration)
+        console.log('Would send hours approved email to:', volunteer.email, {
           hours: hourLog.hours,
           date: hourLog.date,
           opportunityId: hourLog.opportunity_id,
@@ -450,11 +473,11 @@ export class VolunteerService {
         // Get volunteer details for notification
         const volunteer = await userService.getUserWithProfile(volunteerId);
         
-        // Send status notification
+        // Send status notification (temporarily using console.log during migration)
         if (status === 'approved') {
-          await emailService.sendBackgroundCheckApprovedEmail(volunteer);
+          console.log('Would send background check approved email to:', volunteer.email);
         } else {
-          await emailService.sendBackgroundCheckRejectedEmail(volunteer, { notes });
+          console.log('Would send background check rejected email to:', volunteer.email, { notes });
         }
       }
 
@@ -470,4 +493,4 @@ export class VolunteerService {
       throw new Error('Failed to process background check');
     }
   }
-} 
+}

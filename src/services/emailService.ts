@@ -1,8 +1,7 @@
 import { Resend } from 'resend';
 import { User } from './userService';
-// Supabase client import removed - using Firebase instead
-import { db, auth } from '../lib/firebase';
-import { collection, addDoc, doc, updateDoc, serverTimestamp } from 'firebase/firestore';
+import { db } from '../firebase/config';
+import { collection, addDoc, updateDoc, doc } from 'firebase/firestore';
 
 interface EmailLog {
   id: string;
@@ -76,18 +75,18 @@ class EmailService {
         retry_count: retryCount,
       });
 
-      const { data, error } = await this.resend.emails.send({
+      const result = await this.resend.emails.send({
         from: `HopeCare <${process.env.RESEND_FROM_EMAIL}>`,
         to: options.to,
         subject: options.subject,
         html: options.html,
       });
 
-      if (error) throw error;
+      if (result.error) throw result.error;
 
       await this.updateEmailLog(logEntry.id, {
         status: 'sent',
-        metadata: { message_id: data.id },
+        metadata: { message_id: result.data?.id || 'unknown' },
       });
 
       return true;
@@ -102,7 +101,7 @@ class EmailService {
       if (logEntry) {
         await this.updateEmailLog(logEntry.id, {
           status: 'failed',
-          error: error.message,
+          error: error instanceof Error ? error.message : String(error),
         });
       }
 
@@ -398,11 +397,183 @@ class EmailService {
     return this.sendWithRetry({
       to: user.email,
       subject: 'Volunteer Application Received - HopeCare',
-      html,
-      user_id: user.id,
-      email_type: 'volunteer_application',
-    });
-  }
 }
 
-export const emailService = new EmailService(); 
+async sendVolunteerWelcomeEmail(email: string, data: { firstName: string; lastName: string }) {
+  const html = `
+    <!DOCTYPE html>
+    <html>
+      <head>
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      </head>
+      <body>
+        <div style="max-width: 600px; margin: 0 auto; padding: 20px;">
+          <h1 style="color: #333; text-align: center;">Welcome to HopeCare Volunteer Program!</h1>
+          <p>Hello ${data.firstName},</p>
+          <p>Thank you for joining our volunteer program. We're excited to have you on board!</p>
+          <p>Our team will be in touch with you soon about available opportunities.</p>
+          <p>Best regards,<br>The HopeCare Team</p>
+        </div>
+      </body>
+    </html>
+  `;
+
+  return this.sendWithRetry({
+    to: email,
+    subject: 'Welcome to HopeCare Volunteer Program',
+    html,
+    user_id: 'volunteer', // This is a placeholder, should be replaced with actual user ID
+    email_type: 'volunteer_welcome',
+  });
+}
+
+async sendVolunteerAssignmentEmail(email: string, data: { 
+  firstName: string;
+  opportunityName: string;
+  startDate: string;
+  location: string;
+}) {
+  const html = `
+    <!DOCTYPE html>
+    <html>
+      <head>
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      </head>
+      <body>
+        <div style="max-width: 600px; margin: 0 auto; padding: 20px;">
+          <h1 style="color: #333; text-align: center;">Volunteer Assignment Confirmation</h1>
+          <p>Hello ${data.firstName},</p>
+          <p>You have been assigned to the following volunteer opportunity:</p>
+          <div style="
+            background-color: #f8f9fa;
+            padding: 20px;
+            border-radius: 4px;
+            margin: 20px 0;
+          ">
+            <ul style="list-style: none; padding: 0; margin: 0;">
+              <li style="margin-bottom: 10px;">Opportunity: ${data.opportunityName}</li>
+              <li style="margin-bottom: 10px;">Start Date: ${data.startDate}</li>
+              <li style="margin-bottom: 10px;">Location: ${data.location}</li>
+            </ul>
+          </div>
+          <p>Please contact us if you have any questions or need to reschedule.</p>
+          <p>Best regards,<br>The HopeCare Team</p>
+        </div>
+      </body>
+    </html>
+  `;
+
+  return this.sendWithRetry({
+    to: email,
+    subject: 'Volunteer Assignment Confirmation - HopeCare',
+    html,
+    user_id: 'volunteer', // This is a placeholder, should be replaced with actual user ID
+    email_type: 'volunteer_assignment',
+  });
+}
+
+async sendHoursApprovedEmail(email: string, data: {
+  firstName: string;
+  hours: number;
+  date: string;
+  opportunityName: string;
+}) {
+  const html = `
+    <!DOCTYPE html>
+    <html>
+      <head>
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      </head>
+      <body>
+        <div style="max-width: 600px; margin: 0 auto; padding: 20px;">
+          <h1 style="color: #333; text-align: center;">Volunteer Hours Approved</h1>
+          <p>Hello ${data.firstName},</p>
+          <p>Your volunteer hours have been approved:</p>
+          <div style="
+            background-color: #f8f9fa;
+            padding: 20px;
+            border-radius: 4px;
+            margin: 20px 0;
+          ">
+            <ul style="list-style: none; padding: 0; margin: 0;">
+              <li style="margin-bottom: 10px;">Hours: ${data.hours}</li>
+              <li style="margin-bottom: 10px;">Date: ${data.date}</li>
+              <li style="margin-bottom: 10px;">Opportunity: ${data.opportunityName}</li>
+            </ul>
+          </div>
+          <p>Thank you for your dedication and service!</p>
+          <p>Best regards,<br>The HopeCare Team</p>
+        </div>
+      </body>
+    </html>
+  `;
+
+  return this.sendWithRetry({
+    to: email,
+    subject: 'Volunteer Hours Approved - HopeCare',
+    html,
+    user_id: 'volunteer', // This is a placeholder, should be replaced with actual user ID
+    email_type: 'hours_approved',
+  });
+}
+
+async sendBackgroundCheckApprovedEmail(email: string, data: { firstName: string }) {
+  const html = `
+    <!DOCTYPE html>
+    <html>
+      <head>
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      </head>
+      <body>
+        <div style="max-width: 600px; margin: 0 auto; padding: 20px;">
+          <h1 style="color: #333; text-align: center;">Background Check Approved</h1>
+          <p>Hello ${data.firstName},</p>
+          <p>We are pleased to inform you that your background check has been approved.</p>
+          <p>You are now eligible to participate in all volunteer opportunities that require a background check.</p>
+          <p>Thank you for your patience during this process.</p>
+          <p>Best regards,<br>The HopeCare Team</p>
+        </div>
+      </body>
+    </html>
+  `;
+
+  return this.sendWithRetry({
+    to: email,
+    subject: 'Background Check Approved - HopeCare',
+    html,
+    user_id: 'volunteer', // This is a placeholder, should be replaced with actual user ID
+    email_type: 'background_check_approved',
+  });
+}
+
+async sendBackgroundCheckRejectedEmail(email: string, data: { firstName: string; reason?: string }) {
+  const html = `
+    <!DOCTYPE html>
+    <html>
+      <head>
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      </head>
+      <body>
+        <div style="max-width: 600px; margin: 0 auto; padding: 20px;">
+          <h1 style="color: #333; text-align: center;">Background Check Status</h1>
+          <p>Hello ${data.firstName},</p>
+          <p>We regret to inform you that we are unable to approve your background check at this time.</p>
+          ${data.reason ? `<p>Reason: ${data.reason}</p>` : ''}
+          <p>If you believe this is an error or would like to discuss this further, please contact our volunteer coordinator.</p>
+          <p>Best regards,<br>The HopeCare Team</p>
+        </div>
+      </body>
+    </html>
+  `;
+
+  return this.sendWithRetry({
+    to: email,
+    subject: 'Background Check Status - HopeCare',
+    html,
+    user_id: 'volunteer', // This is a placeholder, should be replaced with actual user ID
+    email_type: 'background_check_rejected',
+  });
+}
+}
+
+export const emailService = new EmailService();

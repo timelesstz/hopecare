@@ -1,0 +1,7 @@
+{
+  "name": "hopecare-scripts",
+  "version": "1.0.0",
+  "description": "Scripts for HopeCare Supabase migration",
+  "type": "module",
+  "private": true
+}

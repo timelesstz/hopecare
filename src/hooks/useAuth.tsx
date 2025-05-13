@@ -1,9 +1,18 @@
 // This file is deprecated. Use FirebaseAuthContext.tsx instead.
 // Keeping this file for backward compatibility, but redirecting to the main auth context.
 
-import { useFirebaseAuth } from '../context/FirebaseAuthContext';
+/**
+ * Auth Hook
+ * This is a compatibility layer to ensure existing components
+ * continue to work during the migration from Firebase to Supabase
+ * 
+ * This hook now uses the Supabase authentication system directly
+ * but maintains the same interface as the previous Firebase auth
+ */
+import { useSupabaseAuth } from './useSupabaseAuth';
 
-export const useAuth = useFirebaseAuth;
+// Export the Supabase auth hook with the same name for backward compatibility
+export const useAuth = useSupabaseAuth;
 
 export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   console.warn(

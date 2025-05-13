@@ -1,10 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { Heart, Clock, Search, Filter } from 'lucide-react';
 import { Donor } from '../../types/donor';
-import { collection, query, getDocs, orderBy, limit, where } from 'firebase/firestore';
-import { db } from '../../firebase/config';
+
 import { CircularProgress, Card, CardContent, LinearProgress, TextField, MenuItem, Select, FormControl, InputLabel, Chip } from '@mui/material';
 import { Link } from 'react-router-dom';
+import { supabase } from '../../supabase/client';
 
 interface DonorProjectsProps {
   donor: Donor;
@@ -49,29 +49,23 @@ const DonorProjects: React.FC<DonorProjectsProps> = ({ donor }) => {
   const fetchProjects = async () => {
     setLoading(true);
     try {
-      const projectsRef = collection(db, 'projects');
-      const projectsQuery = query(
-        projectsRef,
-        orderBy('createdAt', 'desc')
-      );
+      const { data, error } = await supabase
+        .from('projects')
+        .select('*')
+        .order('createdAt', { ascending: false });
+      if (error) throw error;
       
-      const projectsSnapshot = await getDocs(projectsQuery);
-      const projectsData: Project[] = [];
-      
-      projectsSnapshot.forEach((doc) => {
-        const data = doc.data();
-        projectsData.push({
-          id: doc.id,
-          title: data.title || 'Untitled Project',
-          description: data.description || '',
-          goal: data.goal || 0,
-          raised: data.raised || 0,
-          imageUrl: data.imageUrl || 'https://via.placeholder.com/300x200',
-          category: data.category || 'General',
-          endDate: data.endDate || '',
-          createdAt: data.createdAt || ''
-        });
-      });
+      const projectsData = data.map(project => ({
+        id: project.id,
+        title: project.title || 'Untitled Project',
+        description: project.description || '',
+        goal: project.goal || 0,
+        raised: project.raised || 0,
+        imageUrl: project.imageUrl || 'https://via.placeholder.com/300x200',
+        category: project.category || 'General',
+        endDate: project.endDate || '',
+        createdAt: project.createdAt || ''
+      }));
       
       setProjects(projectsData);
     } catch (error) {
@@ -280,4 +274,4 @@ const DonorProjects: React.FC<DonorProjectsProps> = ({ donor }) => {
   );
 };
 
-export default DonorProjects; 
+export default DonorProjects;

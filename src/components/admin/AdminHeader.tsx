@@ -9,15 +9,14 @@ import {
   HelpCircle,
   ChevronDown
 } from 'lucide-react';
-import { useFirebaseAuth } from '../../context/FirebaseAuthContext';
-import LoadingSpinner from '../ui/LoadingSpinner';
+import { useAuth } from '../../contexts/AuthContext';
 
 interface AdminHeaderProps {
   onMenuToggle: () => void;
 }
 
 const AdminHeader: React.FC<AdminHeaderProps> = ({ onMenuToggle }) => {
-  const { user, logout } = useFirebaseAuth();
+  const { user, logout } = useAuth();
   const [showUserMenu, setShowUserMenu] = useState(false);
   const [showNotifications, setShowNotifications] = useState(false);
   
@@ -153,7 +152,7 @@ const AdminHeader: React.FC<AdminHeaderProps> = ({ onMenuToggle }) => {
                   <User size={16} />
                 </div>
                 <span className="hidden md:block font-medium">
-                  {user?.displayName || 'Admin User'}
+                  {user?.email || 'Admin User'}
                 </span>
                 <ChevronDown size={16} className="text-gray-400" />
               </button>
@@ -202,4 +201,4 @@ const AdminHeader: React.FC<AdminHeaderProps> = ({ onMenuToggle }) => {
   );
 };
 
-export default AdminHeader; 
+export default AdminHeader;

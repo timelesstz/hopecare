@@ -1,17 +1,15 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../components/ui/tabs";
-import { useFirebaseAuth } from "../context/FirebaseAuthContext";
+import { useAuth } from "../contexts/AuthContext";
 import DonorLoginForm from "../components/auth/DonorLoginForm";
 import DonorRegistrationForm from "../components/auth/DonorRegistrationForm";
 import { Alert, AlertTitle } from "@mui/material";
 import { Loader2 } from "lucide-react";
-import Navbar from "../components/Navbar";
-import Footer from "../components/Footer";
 
 const DonorAuth = () => {
   const navigate = useNavigate();
-  const { isAuthenticated, error, login, register, clearError } = useFirebaseAuth();
+  const { isAuthenticated, error, login, register, clearError } = useAuth();
   const [activeTab, setActiveTab] = useState("login");
   const [isLoading, setIsLoading] = useState(false);
   const [localError, setLocalError] = useState<string | null>(null);
@@ -30,8 +28,8 @@ const DonorAuth = () => {
     setLocalError(null);
     setIsLoading(true);
     try {
-      console.log("Calling login function with role DONOR");
-      await login(data.email, data.password, "DONOR");
+      console.log("Calling login function");
+      await login(data.email, data.password);
       console.log("Login function completed");
       // The login function updates the auth state, which will trigger the useEffect above
       // to redirect to the dashboard if successful
@@ -77,8 +75,7 @@ const DonorAuth = () => {
 
   return (
     <div className="min-h-screen flex flex-col">
-      <Navbar />
-      <main className="flex-grow pt-16">
+      <main className="flex-grow">
         <div className="flex min-h-screen bg-gray-50">
           <div className="flex flex-col justify-center flex-1 px-4 py-12 sm:px-6 lg:flex-none lg:px-20 xl:px-24">
             <div className="w-full max-w-sm mx-auto lg:w-96">
@@ -131,7 +128,6 @@ const DonorAuth = () => {
           </div>
         </div>
       </main>
-      <Footer />
     </div>
   );
 };

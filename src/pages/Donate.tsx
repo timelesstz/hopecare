@@ -1,18 +1,18 @@
-import React, { useState, useEffect } from 'react';
-import { Heart, Gift, Users, Trophy, Sparkles, ArrowRight, Target, Calendar, Repeat, User, Mail, Phone, Shield, DollarSign, CheckCircle } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { Gift, Users, Sparkles, ArrowRight, Target, Calendar, Repeat, User, Shield, CheckCircle } from 'lucide-react';
 import DonationTier from '../components/DonationTier';
 import CustomDonationInput from '../components/CustomDonationInput';
 import { motion } from 'framer-motion';
 import { useDonation } from '../context/DonationContext';
 import { useFlutterwave, closePaymentModal } from 'flutterwave-react-v3';
-import { initializePayment, handlePaymentCallback } from '../services/payment';
-import { useFirebaseAuth } from '../context/FirebaseAuthContext';
+import { handlePaymentCallback } from '../services/payment';
+import { useAuth } from '../contexts/AuthContext';
 import PaymentErrorRecovery from '../components/PaymentErrorRecovery';
 import { addDoc, collection } from 'firebase/firestore';
-import { db } from '../lib/firebase';
-import { analytics } from '../lib/analytics-firebase';
+import { db } from '../firebase/config';
+import { analyticsService } from '../firebase/analytics';
 import { useNavigate } from 'react-router-dom';
-import { TextField, Button, Checkbox, FormControlLabel, Divider, Alert, Stepper, Step, StepLabel, LinearProgress, Avatar } from '@mui/material';
+import { TextField, Button, Checkbox, FormControlLabel, Divider, Alert, Stepper, Step, StepLabel, Avatar } from '@mui/material';
 
 const DONATION_TIERS = [
   {
@@ -146,7 +146,7 @@ const IMPACT_CALCULATOR = [
 
 const Donate = () => {
   const { setDonationData } = useDonation();
-  const { user } = useFirebaseAuth();
+  const { user } = useAuth();
   const [selectedAmount, setSelectedAmount] = useState<number | null>(null);
   const [customAmount, setCustomAmount] = useState('');
   const [isCustomSelected, setIsCustomSelected] = useState(false);
@@ -280,7 +280,7 @@ const Donate = () => {
         status: 'completed',
         payment_method: paymentData.payment_method || 'card',
         donor_id: user?.id || 'guest',
-        donor_name: user?.displayName || guestName || 'Anonymous',
+        donor_name: user?.user_metadata?.display_name || guestName || 'Anonymous',
         donor_email: user?.email || guestEmail || 'anonymous@example.com',
         donor_phone: guestPhone || '',
         is_guest: isGuestDonation,
@@ -289,22 +289,23 @@ const Donate = () => {
       };
       
       // Add donation to Firestore
-      await addDoc(collection(db, 'donations'), donationData);
+      // Store donation in Firestore
+      const docRef = await addDoc(collection(db, 'donations'), donationData);
       
       // Update UI
       setDonationData({
-        amount: paymentData.amount,
-        currency: paymentData.currency || 'USD',
+        amount: parseFloat(customAmount),
+        currency: 'USD',
         date: new Date().toISOString(),
-        project: 'General Fund',
+        project: 'General Fund'
       });
       
       // Track donation in analytics
-      analytics.trackDonation({
+      analyticsService.trackDonation({
         amount: paymentData.amount,
-        currency: paymentData.currency || 'USD',
+        currency: 'USD',
         donation_type: donationType === 'monthly' ? 'monthly' : 'one-time',
-        payment_method: paymentData.payment_method || 'card',
+        payment_method: 'flutterwave'
       });
       
       // Navigate to success page
@@ -314,6 +315,28 @@ const Donate = () => {
       setError('Failed to record donation. Please contact support.');
     }
   };
+
+  // Initialize Flutterwave payment config at the component level
+  const config = {
+    public_key: import.meta.env.VITE_FLUTTERWAVE_PUBLIC_KEY || 'FLUTTERWAVE_PUBLIC_KEY',
+    tx_ref: Date.now().toString(),
+    amount: parseFloat(customAmount) || 0,
+    currency: 'USD',
+    payment_options: 'card,mobilemoney,ussd',
+    customer: {
+      email: user?.email || guestEmail || 'guest@example.com',
+      phone_number: user?.phone || guestPhone || '0000000000', // Required by Flutterwave
+      name: user?.user_metadata?.display_name || guestName || 'Guest Donor',
+    },
+    customizations: {
+      title: 'HopeCare Donation',
+      description: 'Supporting healthcare initiatives in Tanzania',
+      logo: 'https://hopecaretz.org/logo.png',
+    },
+  };
+
+  // Use the hook at the component level
+  const handleFlutterPayment = useFlutterwave(config);
 
   const handleDonation = async () => {
     // Determine the amount from either custom input or selected tier
@@ -338,16 +361,12 @@ const Donate = () => {
     setError(null);
     setPaymentError(null);
 
-    const config = initializePayment({
-      amount,
-      email: user?.email || guestEmail || 'guest@example.com',
-      name: user?.displayName || guestName || 'Guest Donor',
-    });
+    // Update the Flutterwave config with current values
+    // No need to create a new config, we'll use the existing handleFlutterPayment
 
     try {
-      const flutterwave = useFlutterwave(config);
-      
-      flutterwave({
+      // Use the pre-initialized payment handler
+      handleFlutterPayment({
         callback: async (response) => {
           closePaymentModal();
           if (response.status === 'successful') {

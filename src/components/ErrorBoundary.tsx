@@ -1,6 +1,5 @@
-import React, { Component, ErrorInfo, ReactNode } from 'react';
+import { Component, ErrorInfo, ReactNode } from 'react';
 import { AlertCircle, RefreshCw, Home } from 'lucide-react';
-import { Link } from 'react-router-dom';
 import { logError } from '../utils/errorLogger';
 
 interface Props {
@@ -47,7 +46,9 @@ class ErrorBoundary extends Component<Props, State> {
     // Log error to our error reporting service
     logError('UI Error', {
       error,
-      errorInfo,
+      errorInfo: {
+        componentStack: errorInfo.componentStack || ''
+      },
       location: window.location.href,
       timestamp: new Date().toISOString(),
     });
@@ -94,13 +95,13 @@ class ErrorBoundary extends Component<Props, State> {
                 <span>Refresh Page</span>
               </button>
               
-              <Link
-                to="/"
+              <button
+                onClick={() => window.location.href = '/'}
                 className="flex-1 flex items-center justify-center gap-2 bg-gray-200 text-gray-800 py-2 px-4 rounded-md hover:bg-gray-300 transition-colors"
               >
                 <Home size={16} />
                 <span>Go to Home</span>
-              </Link>
+              </button>
             </div>
           </div>
         </div>

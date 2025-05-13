@@ -1,6 +1,4 @@
-// Supabase client import removed - using Firebase instead
-import { db, auth } from '../lib/firebase';
-import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
+// Simple error logger that doesn't depend on database
 
 interface ErrorLog {
   type: string;
@@ -39,8 +37,6 @@ class ErrorLogger {
   }
 
   public async logError(type: string, info: ErrorInfo): Promise<void> {
-    const currentUser = auth.currentUser;
-    
     const errorLog: ErrorLog = {
       type,
       message: info.error.message,
@@ -52,25 +48,16 @@ class ErrorLogger {
         userAgent: navigator.userAgent,
         timestamp: info.timestamp || new Date().toISOString(),
       },
-      user_id: currentUser?.uid,
+      user_id: localStorage.getItem('userID') || undefined,
       severity: 'error',
       environment: this.environment,
       timestamp: new Date().toISOString(),
     };
 
-    // Log to console in development
-    if (this.environment === 'development') {
-      console.error('Error logged:', errorLog);
-    }
+    // Log to console in all environments during migration
+    console.error('Error logged:', errorLog);
 
     try {
-      // Store error in Firestore
-      const errorLogsCollection = collection(db, 'error_logs');
-      await addDoc(errorLogsCollection, {
-        ...errorLog,
-        created_at: serverTimestamp(),
-      });
-
       // If in production, send to external error tracking service
       if (this.environment === 'production') {
         await this.sendToExternalService(errorLog);
@@ -80,37 +67,28 @@ class ErrorLogger {
     }
   }
 
-  private async sendToExternalService(errorLog: ErrorLog): Promise<void> {
+  private async sendToExternalService(errorData: ErrorLog): Promise<void> {
     // Implement integration with external error tracking service
     // Example: Sentry, LogRocket, etc.
     if (process.env.VITE_ERROR_TRACKING_SERVICE === 'sentry') {
-      // Sentry.captureException(errorLog);
+      // Sentry.captureException(errorData);
+      console.log('Would send to Sentry:', errorData);
     }
   }
 
   public async logWarning(message: string, metadata?: Record<string, any>): Promise<void> {
-    const currentUser = auth.currentUser;
-    
     const warningLog: ErrorLog = {
       type: 'warning',
       message,
       metadata,
-      user_id: currentUser?.uid,
+      user_id: localStorage.getItem('userID') || undefined,
       severity: 'warning',
       environment: this.environment,
       timestamp: new Date().toISOString(),
     };
 
-    try {
-      // Store warning in Firestore
-      const errorLogsCollection = collection(db, 'error_logs');
-      await addDoc(errorLogsCollection, {
-        ...warningLog,
-        created_at: serverTimestamp(),
-      });
-    } catch (err) {
-      console.error('Warning logging failed:', err);
-    }
+    // Log to console in all environments during migration
+    console.warn('Warning logged:', warningLog);
   }
 }
 
@@ -122,4 +100,4 @@ export const logError = (type: string, info: ErrorInfo): void => {
 
 export const logWarning = (message: string, metadata?: Record<string, any>): void => {
   errorLogger.logWarning(message, metadata);
-}; 
+};

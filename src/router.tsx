@@ -1,8 +1,8 @@
 import React, { lazy, Suspense, useEffect } from 'react';
 import { Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import PageLayout from './components/PageLayout';
-import { useFirebaseAuth } from './context/FirebaseAuthContext';
-import FirebaseProtectedRoute from './components/auth/FirebaseProtectedRoute';
+import { useAuth } from './contexts/AuthContext';
+
 import AdminLayout from './components/layouts/AdminLayout';
 import ProtectedRoute from './components/ProtectedRoute';
 import LoadingSpinner from './components/ui/LoadingSpinner';
@@ -38,7 +38,7 @@ const VolunteerDashboard = lazy(() => import('./pages/VolunteerDashboard'));
 const VolunteerAuth = lazy(() => import('./pages/VolunteerAuth'));
 const ResetPassword = lazy(() => import('./pages/ResetPassword'));
 const ForgotPassword = lazy(() => import('./pages/ForgotPassword'));
-const FirebaseAuthTest = lazy(() => import('./pages/FirebaseAuthTest'));
+
 const Unauthorized = lazy(() => import('./pages/Unauthorized'));
 
 // Admin components
@@ -58,29 +58,17 @@ const AdminVolunteers = lazy(() => import('./pages/admin/users/Volunteers'));
 const AdminDonors = lazy(() => import('./pages/admin/users/Donors'));
 
 const AppRouter = () => {
-  const { user, loading } = useFirebaseAuth();
+  const { user, loading, getUserData } = useAuth();
   const location = useLocation();
   const isAuthenticated = !!user;
   
-  // More flexible admin check
-  const isAdmin = user && (
-    user.role === 'ADMIN' || 
-    (user.customClaims && (
-      user.customClaims.role === 'ADMIN' || 
-      user.customClaims.isAdmin === true
-    )) ||
-    user.email === 'admin@hopecaretz.org'
-  );
+  // Helper functions for role-based routing
+  const isAdmin = () => {
+    const userData = getUserData();
+    return userData?.role === 'admin';
+  };
 
-  // Debug user info
-  useEffect(() => {
-    if (user) {
-      console.log('Router - User authenticated:', user);
-      console.log('Router - User role:', user.role);
-      console.log('Router - User claims:', user.customClaims);
-      console.log('Router - Is admin?', isAdmin);
-    }
-  }, [user, isAdmin]);
+  // Debug user info - removed console logs for production
 
   return (
     <Suspense fallback={<LoadingFallback />}>
@@ -105,7 +93,7 @@ const AppRouter = () => {
           <Route path="volunteer-login" element={<VolunteerAuth />} />
           <Route path="reset-password" element={<ResetPassword />} />
           <Route path="forgot-password" element={<ForgotPassword />} />
-          <Route path="firebase-test" element={<FirebaseAuthTest />} />
+          
           <Route path="unauthorized" element={<Unauthorized />} />
           
           {/* Protected routes */}

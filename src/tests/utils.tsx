@@ -3,10 +3,10 @@ import { render as rtlRender } from '@testing-library/react';
 import { BrowserRouter } from 'react-router-dom';
 import { AuthProvider } from '../context/AuthContext';
 import { vi } from 'vitest';
-import { mockAuth, mockFirestore, mockStorage } from '../test/mockFirebase';
+import { mockSupabase } from '../test/mockSupabase';
 
 // Mock Firebase modules
-vi.mock('../lib/firebase', () => ({
+vi.mock('@supabase/supabase-js', () => ({
   auth: mockAuth,
   db: mockFirestore,
   storage: mockStorage,
@@ -64,4 +64,4 @@ function render(ui: React.ReactElement, { route = '/', ...renderOptions } = {}) 
 export * from '@testing-library/react';
 
 // Override render method
-export { render }; 
+export { render };

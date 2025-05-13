@@ -1,28 +1,10 @@
 // Supabase client import removed - using Firebase instead
-import { db, auth } from '../lib/firebase';
-import { 
-  createUserWithEmailAndPassword, 
-  signInWithEmailAndPassword,
-  signOut,
-  updateProfile,
-  sendEmailVerification,
-  sendPasswordResetEmail,
-  updatePassword,
-  EmailAuthProvider,
-  reauthenticateWithCredential
-} from 'firebase/auth';
-import { 
-  collection, 
-  doc, 
-  setDoc, 
-  addDoc, 
-  getDoc, 
-  getDocs, 
-  updateDoc, 
-  query, 
-  where, 
-  serverTimestamp 
-} from 'firebase/firestore';
+import { supabase } from '../lib/supabase';
+import {
+  createClient,
+  SupabaseClient,
+  User
+} from '@supabase/supabase-js';
 import { generateToken, verifyToken } from '../utils/jwt';
 import { hashPassword, verifyPassword } from '../utils/password';
 import { authenticator } from 'otplib';
@@ -592,4 +574,4 @@ class UserService {
   }
 }
 
-export const userService = new UserService(); 
+export const userService = new UserService();

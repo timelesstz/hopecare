@@ -2,28 +2,25 @@ import { FC } from 'react';
 import { BrowserRouter } from 'react-router-dom';
 import { PageProvider } from './context/PageContext';
 import { DonationProvider } from './context/DonationContext';
-import { FirebaseAuthProvider } from './context/FirebaseAuthContext';
+import { AuthProvider } from './contexts/AuthContext';
 import { ThemeProvider } from './context/ThemeContext';
 import ErrorBoundary from './components/ErrorBoundary';
-import FirebaseErrorBoundary from './components/FirebaseErrorBoundary';
 import AppRouter from './router';
 
 const App: FC = () => {
   return (
     <ErrorBoundary>
-      <FirebaseErrorBoundary>
-        <FirebaseAuthProvider>
+      <BrowserRouter>
+        <AuthProvider>
           <ThemeProvider>
             <DonationProvider>
               <PageProvider>
-                <BrowserRouter>
-                  <AppRouter />
-                </BrowserRouter>
+                <AppRouter />
               </PageProvider>
             </DonationProvider>
           </ThemeProvider>
-        </FirebaseAuthProvider>
-      </FirebaseErrorBoundary>
+        </AuthProvider>
+      </BrowserRouter>
     </ErrorBoundary>
   );
 };

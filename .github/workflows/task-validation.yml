@@ -1,0 +1,131 @@
+name: Task Validation
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+  workflow_dispatch:
+
+jobs:
+  validate-tasks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      
+      - name: Set up Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '18'
+          cache: 'npm'
+          
+      - name: Install dependencies
+        run: npm ci
+        
+      - name: Check for Firebase references
+        id: firebase_check
+        run: |
+          # Count Firebase imports that haven't been migrated
+          FIREBASE_IMPORTS=$(grep -r --include="*.ts" --include="*.tsx" "from 'firebase\|from \"firebase" src | grep -v "from './firebase\|from \"./firebase" | wc -l)
+          echo "Firebase imports found: $FIREBASE_IMPORTS"
+          echo "firebase_imports=$FIREBASE_IMPORTS" >> $GITHUB_OUTPUT
+          
+      - name: Check for Supabase implementation
+        id: supabase_check
+        run: |
+          # Count Supabase imports
+          SUPABASE_IMPORTS=$(grep -r --include="*.ts" --include="*.tsx" "from '@supabase\|from \"@supabase" src | wc -l)
+          echo "Supabase imports found: $SUPABASE_IMPORTS"
+          echo "supabase_imports=$SUPABASE_IMPORTS" >> $GITHUB_OUTPUT
+          
+      - name: Validate authentication implementation
+        id: auth_check
+        run: |
+          # Check if AuthContext is using Supabase
+          AUTH_USING_SUPABASE=$(grep -r --include="AuthContext.tsx" "supabase.auth" src | wc -l)
+          echo "Auth using Supabase: $AUTH_USING_SUPABASE"
+          echo "auth_using_supabase=$AUTH_USING_SUPABASE" >> $GITHUB_OUTPUT
+          
+      - name: Check for environment variables
+        id: env_check
+        run: |
+          # Check if .env has Supabase variables
+          if grep -q "VITE_SUPABASE_URL" .env; then
+            echo "Supabase URL configured: Yes"
+            echo "supabase_url_configured=true" >> $GITHUB_OUTPUT
+          else
+            echo "Supabase URL configured: No"
+            echo "supabase_url_configured=false" >> $GITHUB_OUTPUT
+          fi
+          
+      - name: Update task status
+        run: |
+          # Create a summary of checks
+          echo "## Migration Status Summary" > migration_status.md
+          echo "" >> migration_status.md
+          
+          # Authentication
+          if [ ${{ steps.auth_check.outputs.auth_using_supabase }} -gt 0 ]; then
+            echo "- ✅ Authentication: Migrated to Supabase" >> migration_status.md
+          else
+            echo "- ❌ Authentication: Not migrated to Supabase" >> migration_status.md
+          fi
+          
+          # Environment
+          if [ "${{ steps.env_check.outputs.supabase_url_configured }}" == "true" ]; then
+            echo "- ✅ Environment: Supabase configuration found" >> migration_status.md
+          else
+            echo "- ❌ Environment: Supabase configuration missing" >> migration_status.md
+          fi
+          
+          # Firebase references
+          if [ ${{ steps.firebase_check.outputs.firebase_imports }} -eq 0 ]; then
+            echo "- ✅ Firebase: No direct Firebase imports found" >> migration_status.md
+          else
+            echo "- ⚠️ Firebase: ${{ steps.firebase_check.outputs.firebase_imports }} direct Firebase imports found" >> migration_status.md
+          fi
+          
+          # Supabase usage
+          echo "- ℹ️ Supabase: ${{ steps.supabase_check.outputs.supabase_imports }} Supabase imports found" >> migration_status.md
+          
+          # Calculate progress
+          TOTAL_TASKS=4
+          COMPLETED_TASKS=0
+          
+          if [ ${{ steps.auth_check.outputs.auth_using_supabase }} -gt 0 ]; then
+            COMPLETED_TASKS=$((COMPLETED_TASKS+1))
+          fi
+          
+          if [ "${{ steps.env_check.outputs.supabase_url_configured }}" == "true" ]; then
+            COMPLETED_TASKS=$((COMPLETED_TASKS+1))
+          fi
+          
+          if [ ${{ steps.firebase_check.outputs.firebase_imports }} -eq 0 ]; then
+            COMPLETED_TASKS=$((COMPLETED_TASKS+1))
+          fi
+          
+          if [ ${{ steps.supabase_check.outputs.supabase_imports }} -gt 10 ]; then
+            COMPLETED_TASKS=$((COMPLETED_TASKS+1))
+          fi
+          
+          PROGRESS=$((COMPLETED_TASKS*100/TOTAL_TASKS))
+          
+          echo "" >> migration_status.md
+          echo "**Overall Progress:** $PROGRESS%" >> migration_status.md
+          
+          cat migration_status.md
+          
+      - name: Create comment
+        uses: actions/github-script@v6
+        if: github.event_name == 'pull_request'
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const fs = require('fs');
+            const statusContent = fs.readFileSync('migration_status.md', 'utf8');
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: statusContent
+            });

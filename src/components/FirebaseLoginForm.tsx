@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { useFirebaseAuth } from '../context/FirebaseAuthContext';
+import { useAuth } from '../contexts/AuthContext';
 import { 
   Box, 
   Button, 
@@ -11,17 +11,16 @@ import {
 } from '@mui/material';
 
 interface LoginFormProps {
-  role?: string;
   onSuccess?: () => void;
 }
 
-const FirebaseLoginForm: React.FC<LoginFormProps> = ({ role = 'DONOR', onSuccess }) => {
+const LoginForm: React.FC<LoginFormProps> = ({ onSuccess }) => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [localError, setLocalError] = useState<string | null>(null);
   
-  const { login, error, clearError } = useFirebaseAuth();
+  const { login, error, clearError } = useAuth();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -30,8 +29,9 @@ const FirebaseLoginForm: React.FC<LoginFormProps> = ({ role = 'DONOR', onSuccess
     setIsSubmitting(true);
     
     try {
-      await login(email, password, role);
-      if (onSuccess) onSuccess();
+      // Supabase login only takes email and password
+      const success = await login(email, password);
+      if (success && onSuccess) onSuccess();
     } catch (err) {
       setLocalError(err instanceof Error ? err.message : 'Login failed');
     } finally {
@@ -96,11 +96,11 @@ const FirebaseLoginForm: React.FC<LoginFormProps> = ({ role = 'DONOR', onSuccess
       
       <Box mt={3}>
         <Typography variant="body2" color="textSecondary" align="center">
-          Using Firebase Authentication
+          Secure Authentication with Supabase
         </Typography>
       </Box>
     </Paper>
   );
 };
 
-export default FirebaseLoginForm; 
+export default LoginForm; 

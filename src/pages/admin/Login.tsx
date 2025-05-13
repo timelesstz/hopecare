@@ -1,17 +1,16 @@
 import { useState, ChangeEvent, FormEvent, useRef, useEffect } from 'react';
 import { useNavigate, useLocation, Link } from 'react-router-dom';
-import { useFirebaseAuth } from '../../context/FirebaseAuthContext';
 import { useTheme } from '../../context/ThemeContext';
+import { useAuth } from "../../contexts/AuthContext";
 import { Button } from '../../components/ui/Button';
-import { TextField, Paper, Typography, Box, Alert, InputAdornment, IconButton, Container, CircularProgress } from '@mui/material';
-import { Lock, Mail, Eye, EyeOff, Shield, AlertCircle } from 'lucide-react';
+import { TextField, Paper, Typography, Box, Alert, InputAdornment, IconButton, Container, CircularProgress, Divider, Chip } from '@mui/material';
+import { Lock, Mail, Eye, EyeOff, Shield, AlertCircle, HelpCircle, ArrowLeft } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
-import Navbar from '../../components/Navbar';
-import Footer from '../../components/Footer';
 import { toast } from 'react-hot-toast';
+import { supabase } from '../../lib/supabase';
 
 const AdminLogin = () => {
-  const { login, error: authError, loading, user } = useFirebaseAuth();
+  const { login, logout, error: authError, loading, user, clearError } = useAuth();
   const { mode } = useTheme();
   const navigate = useNavigate();
   const location = useLocation();
@@ -28,30 +27,53 @@ const AdminLogin = () => {
 
   // Check if user is already logged in
   useEffect(() => {
-    if (user) {
-      console.log('User already logged in:', user);
-      console.log('User role:', user.role);
-      
-      // Check if user is admin
-      const isAdmin = user.role === 'ADMIN' || 
-                     (user.customClaims && (
-                       user.customClaims.role === 'ADMIN' || 
-                       user.customClaims.isAdmin === true
-                     ));
-      
-      console.log('Is admin?', isAdmin);
-      
-      if (isAdmin) {
-        const from = location.state?.from?.pathname || '/admin/dashboard';
-        console.log('Redirecting admin to:', from);
-        navigate(from);
-      } else {
-        console.log('User is not an admin, showing error');
-        setError('You do not have admin privileges');
-        toast.error('You do not have admin privileges');
+    const checkAdminStatus = async () => {
+      if (user) {
+        console.log('User already logged in:', user);
+        try {
+          // Get user data from Supabase
+          const { data: userData, error: userError } = await supabase
+            .from('users')
+            .select('role')
+            .eq('id', user.id)
+            .single();
+          
+          if (userError) throw userError;
+          
+          if (userData) {
+            console.log('User role from Supabase:', userData.role);
+            
+            // Check if user is admin (case insensitive check)
+            const isAdmin = userData.role?.toLowerCase() === 'admin';
+            
+            console.log('Is admin?', isAdmin);
+            
+            if (isAdmin) {
+              const from = location.state?.from?.pathname || '/admin/dashboard';
+              console.log('Redirecting admin to:', from);
+              navigate(from);
+            } else {
+              console.log('User is not an admin, showing error');
+              setError('You do not have admin privileges');
+              toast.error('You do not have admin privileges');
+              // Log out the non-admin user
+              await logout();
+            }
+          } else {
+            console.log('User document not found in Supabase');
+            setError('User profile not found');
+            toast.error('User profile not found');
+          }
+        } catch (err) {
+          console.error('Error checking admin status:', err);
+          setError('Error verifying admin privileges');
+          toast.error('Error verifying admin privileges');
+        }
       }
-    }
-  }, [user, navigate, location]);
+    };
+    
+    checkAdminStatus();
+  }, [user, navigate, location, logout]);
 
   // Set default values for admin login in development mode
   useEffect(() => {
@@ -90,42 +112,62 @@ const AdminLogin = () => {
 
   const handleSubmit = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
+    clearError();
+    setError(null);
     
+    // Validate form fields
     const isEmailValid = validateEmail(email);
     const isPasswordValid = validatePassword(password);
     
     if (!isEmailValid || !isPasswordValid) {
       return;
     }
-
-    console.log(`Attempting login (attempt #${loginAttempts + 1}) with:`, email);
-    setError(null);
-    setLoginAttempts(prev => prev + 1);
+    
     setIsSubmitting(true);
+    console.log('Attempting login with:', email);
     
     try {
-      await login(email, password, 'ADMIN');
+      // Direct Supabase login to bypass any potential issues in the AuthContext
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email,
+        password
+      });
       
-      // Note: Successful login will trigger the useEffect above
-      // which will redirect to the dashboard if the user is an admin
-    } catch (err) {
+      if (error) {
+        throw error;
+      }
+      
+      if (data && data.user) {
+        console.log('Login successful, user:', data.user);
+        toast.success('Login successful!');
+        
+        // Store role in localStorage
+        const role = data.user.user_metadata?.role || 'admin';
+        localStorage.setItem('userRole', role.toLowerCase());
+        
+        // Create and store basic user details
+        const userDetails = {
+          id: data.user.id,
+          email: data.user.email || '',
+          role: role.toLowerCase(),
+          display_name: data.user.user_metadata?.name || data.user.email?.split('@')[0] || ''
+        };
+        localStorage.setItem('userData', JSON.stringify(userDetails));
+        
+        // Navigate to admin dashboard
+        navigate('/admin/dashboard');
+      }
+    } catch (err: any) {
       console.error('Login error:', err);
+      const errorMsg = err.message || 'Login failed. Please check your credentials.';
+      setError(errorMsg);
+      toast.error(errorMsg);
       
-      // Handle specific error cases
-      if (err instanceof Error) {
-        if (err.message.includes('auth/user-not-found') || err.message.includes('auth/wrong-password')) {
-          setError('Invalid email or password');
-          toast.error('Invalid email or password');
-        } else if (err.message.includes('auth/too-many-requests')) {
-          setError('Too many failed login attempts. Please try again later.');
-          toast.error('Too many failed login attempts. Please try again later.');
-        } else {
-          setError(err.message);
-          toast.error(err.message);
-        }
-      } else {
-        setError('An unexpected error occurred. Please try again.');
-        toast.error('An unexpected error occurred. Please try again.');
+      // Handle too many login attempts
+      setLoginAttempts(prev => prev + 1);
+      if (loginAttempts >= 2) {
+        setError('Too many failed login attempts. Please try again later or reset your password.');
+        toast.error('Too many failed login attempts');
       }
     } finally {
       setIsSubmitting(false);
@@ -148,61 +190,60 @@ const AdminLogin = () => {
 
   return (
     <div className={`min-h-screen flex flex-col ${mode === 'dark' ? 'bg-gray-900 text-white' : 'bg-gray-50'}`}>
-      <Navbar />
-      
-      <Container maxWidth="sm" className="flex-grow flex items-center justify-center py-12">
+      <Container maxWidth="sm" className="flex-grow flex items-center justify-center py-12 px-4 sm:px-6 lg:px-8 relative">
+        <div className="absolute top-6 left-6">
+          <Link to="/" className="flex items-center text-gray-600 hover:text-rose-600 transition-colors">
+            <ArrowLeft className="h-5 w-5 mr-1" />
+            <span>Back to Home</span>
+          </Link>
+        </div>
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.5 }}
           className="w-full"
         >
-          <Paper 
-            elevation={3} 
-            className={`p-8 rounded-lg ${mode === 'dark' ? 'bg-gray-800' : 'bg-white'}`}
-            sx={{ 
-              p: 4, 
-              borderRadius: 2,
-              bgcolor: mode === 'dark' ? 'rgba(30, 41, 59, 0.8)' : 'background.paper',
-              boxShadow: mode === 'dark' ? '0 4px 20px rgba(0,0,0,0.4)' : '0 4px 20px rgba(0,0,0,0.1)'
+          <Paper
+            elevation={3}
+            className="p-8 rounded-xl overflow-hidden"
+            sx={{
+              bgcolor: mode === 'dark' ? 'rgb(17, 24, 39)' : 'white',
+              color: mode === 'dark' ? 'white' : 'inherit',
+              boxShadow: mode === 'dark' ? '0 4px 20px rgba(0, 0, 0, 0.5)' : '0 4px 20px rgba(0, 0, 0, 0.1)',
+              border: mode === 'dark' ? '1px solid rgba(255, 255, 255, 0.1)' : 'none',
+              position: 'relative',
             }}
           >
-            <Box sx={{ mb: 3, display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-              <Shield size={40} className="text-rose-600 mb-2" />
-              <Typography 
-                component="h1" 
-                variant="h5" 
-                sx={{ 
-                  fontWeight: 'bold',
-                  color: mode === 'dark' ? 'white' : 'text.primary'
-                }}
-              >
-                Admin Login
+            {/* Decorative top bar */}
+            <div className="absolute top-0 left-0 right-0 h-2 bg-gradient-to-r from-rose-500 to-rose-700"></div>
+            
+            <div className="flex flex-col items-center mb-6 mt-4">
+              <Shield className="h-12 w-12 text-rose-600 mb-2" />
+              <Typography variant="h4" component="h1" align="center" gutterBottom>
+                Admin Portal
               </Typography>
-              <Typography 
-                variant="body2" 
-                sx={{ 
-                  mt: 1, 
-                  textAlign: 'center',
-                  color: mode === 'dark' ? 'gray.400' : 'text.secondary'
-                }}
-              >
-                Sign in to access the HopeCare admin dashboard
+              <Typography variant="body2" color={mode === 'dark' ? 'rgba(255, 255, 255, 0.7)' : 'textSecondary'} align="center">
+                Secure access to the HopeCare administration dashboard
               </Typography>
-            </Box>
+            </div>
 
             <AnimatePresence>
               {(error || authError) && (
                 <motion.div
                   initial={{ opacity: 0, y: -10 }}
                   animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: -10 }}
                   transition={{ duration: 0.3 }}
                 >
                   <Alert 
                     severity="error" 
-                    sx={{ mb: 3 }}
-                    icon={<AlertCircle size={20} />}
+                    className="mb-6"
+                    icon={<AlertCircle className="h-5 w-5" />}
+                    sx={{
+                      borderRadius: '8px',
+                      '& .MuiAlert-icon': {
+                        color: '#f43f5e',
+                      },
+                    }}
                   >
                     {error || authError}
                   </Alert>
@@ -302,8 +343,12 @@ const AdminLogin = () => {
                 }}
               />
               
-              <Box sx={{ display: 'flex', justifyContent: 'flex-end', mb: 2 }}>
-                <Link 
+              <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 2 }}>
+                <label className="flex items-center cursor-pointer">
+                  <input type="checkbox" className="form-checkbox h-4 w-4 text-rose-600 rounded focus:ring-rose-500" />
+                  <span className={`ml-2 text-sm ${mode === 'dark' ? 'text-gray-300' : 'text-gray-600'}`}>Remember me</span>
+                </label>
+                <Link
                   to="/admin/forgot-password"
                   className={`text-sm ${mode === 'dark' ? 'text-rose-400 hover:text-rose-300' : 'text-rose-600 hover:text-rose-800'}`}
                 >
@@ -316,7 +361,7 @@ const AdminLogin = () => {
                 fullWidth
                 variant="primary"
                 disabled={loading || isSubmitting}
-                className="py-1.5 bg-rose-600 hover:bg-rose-700 text-white font-medium text-base rounded-lg"
+                className="py-2 bg-rose-600 hover:bg-rose-700 text-white font-medium text-base rounded-lg transition-all duration-200 shadow-md hover:shadow-lg"
               >
                 {loading || isSubmitting ? (
                   <>
@@ -327,12 +372,40 @@ const AdminLogin = () => {
                   'Sign in'
                 )}
               </Button>
+              
+              <div className="mt-6 mb-2">
+                <Divider>
+                  <Chip 
+                    label="Need Help?" 
+                    size="small" 
+                    sx={{ 
+                      bgcolor: mode === 'dark' ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.05)',
+                      color: mode === 'dark' ? 'rgba(255, 255, 255, 0.8)' : 'rgba(0, 0, 0, 0.7)',
+                    }} 
+                  />
+                </Divider>
+              </div>
+              
+              <div className="flex justify-center space-x-4 mt-2">
+                <Link
+                  to="/contact"
+                  className={`text-sm flex items-center ${mode === 'dark' ? 'text-gray-300 hover:text-white' : 'text-gray-600 hover:text-gray-900'}`}
+                >
+                  <HelpCircle className="h-4 w-4 mr-1" />
+                  Contact Support
+                </Link>
+                <Link
+                  to="/admin/register"
+                  className={`text-sm flex items-center ${mode === 'dark' ? 'text-rose-400 hover:text-rose-300' : 'text-rose-600 hover:text-rose-800'}`}
+                >
+                  <Shield className="h-4 w-4 mr-1" />
+                  Request Admin Access
+                </Link>
+              </div>
             </form>
           </Paper>
         </motion.div>
       </Container>
-      
-      <Footer />
     </div>
   );
 };

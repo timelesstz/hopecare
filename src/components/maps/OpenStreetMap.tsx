@@ -1,21 +1,4 @@
-import React from 'react';
-import { MapContainer, TileLayer, Marker, Popup } from 'react-leaflet';
-import 'leaflet/dist/leaflet.css';
-import L from 'leaflet';
-
-// Fix for default marker icon
-import icon from 'leaflet/dist/images/marker-icon.png';
-import iconShadow from 'leaflet/dist/images/marker-shadow.png';
-
-let DefaultIcon = L.icon({
-  iconUrl: icon,
-  shadowUrl: iconShadow,
-  iconSize: [25, 41],
-  iconAnchor: [12, 41],
-  popupAnchor: [1, -34],
-});
-
-L.Marker.prototype.options.icon = DefaultIcon;
+import React, { useEffect, useState } from 'react';
 
 interface OpenStreetMapProps {
   center: {
@@ -31,28 +14,35 @@ const OpenStreetMap: React.FC<OpenStreetMapProps> = ({
   zoom = 15, 
   markerTitle = 'HopeCare Tanzania' 
 }) => {
-  return (
-    <MapContainer 
-      center={[center.lat, center.lng]} 
-      zoom={zoom} 
-      scrollWheelZoom={false}
-      style={{ height: '100%', width: '100%', zIndex: 1 }}
-    >
-      <TileLayer
-        attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-        url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-      />
-      <Marker position={[center.lat, center.lng]}>
-        <Popup>
-          <div className="text-center">
-            <strong>{markerTitle}</strong>
-            <p>New Safari Hotel, 402</p>
-            <p>Boma Road, Arusha</p>
-          </div>
-        </Popup>
-      </Marker>
-    </MapContainer>
-  );
+  const [mapLoaded, setMapLoaded] = useState(false);
+  const [MapComponent, setMapComponent] = useState<React.ComponentType<any> | null>(null);
+
+  useEffect(() => {
+    // Only import Leaflet on the client side
+    if (typeof window !== 'undefined') {
+      // Use relative path for dynamic import
+      import('./LeafletMap.tsx').then(module => {
+        setMapComponent(() => module.default);
+        setMapLoaded(true);
+      }).catch(error => {
+        console.error('Failed to load map component:', error);
+      });
+    }
+  }, []);
+
+  if (!mapLoaded || !MapComponent) {
+    // Show a placeholder while the map is loading
+    return (
+      <div className="w-full h-full flex items-center justify-center bg-gray-100">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-gray-900 mx-auto mb-4"></div>
+          <p className="text-gray-600">Loading map...</p>
+        </div>
+      </div>
+    );
+  }
+
+  return <MapComponent center={center} zoom={zoom} markerTitle={markerTitle} />;
 };
 
 export default OpenStreetMap;
